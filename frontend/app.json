@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "SecureChat",
+    "slug": "securechat",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#FFFFFF",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.anonymous.securechat"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B0F13",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 160,
+          "dark": {
+            "backgroundColor": "#10151B",
+            "image": "./assets/splash-icon.png"
+          }
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

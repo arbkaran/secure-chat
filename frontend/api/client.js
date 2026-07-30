@@ -1,0 +1,83 @@
+import axios from 'axios';
+import { API_BASE_URL } from '../config/env';
+import { getAccessToken, setSession, clearSession } from './authStorage';
+
+const client = axios.create({ baseURL: API_BASE_URL });
+
+client.interceptors.request.use(async (config) => {
+  const token = await getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export default client;
+
+export async function register({ name, email, password }) {
+  const { data } = await client.post('/auth/register', { name, email, password });
+  return data;
+}
+
+export async function verifyOtp({ email, code }) {
+  const { data } = await client.post('/auth/verify-otp', { email, code });
+  return data;
+}
+
+export async function login({ email, password }) {
+  const { data } = await client.post('/auth/login', { email, password });
+  await setSession(data.access_token, data.user_id);
+  return data;
+}
+
+export async function logout() {
+  await clearSession();
+}
+
+export async function uploadPublicKey(publicKey) {
+  const { data } = await client.put('/keys/upload', { public_key: publicKey });
+  return data;
+}
+
+export async function fetchPublicKey(userId) {
+  const { data } = await client.get(`/keys/${userId}`);
+  return data.rsa_public_key ?? data.public_key;
+}
+
+export async function uploadFile({ receiverId, encryptedAesKey, iv, tag, fileUri, fileName = 'encrypted.bin' }) {
+  const form = new FormData();
+  form.append('receiver_id', String(receiverId));
+  form.append('encrypted_aes_key', encryptedAesKey);
+  form.append('iv', iv);
+  form.append('tag', tag);
+  form.append('file', { uri: fileUri, name: fileName, type: 'application/octet-stream' });
+
+  const { data } = await client.post('/files/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return data;
+}
+
+// Assumes the backend returns { filename, encrypted_aes_key, iv, tag, ciphertext }
+// with ciphertext base64-encoded — backend/ has no files_routes.py yet to confirm against.
+export async function downloadFile(fileId) {
+  const { data } = await client.get(`/files/${fileId}`);
+  return data;
+}
+
+export async function fetchCurrentUser() {
+  const { data } = await client.get('/auth/me');
+  return data;
+}
+
+export async function fetchAllUsers() {
+  const { data } = await client.get('/auth/users');
+  return data;
+}
+
+export async function searchUserByEmail(email) {
+  const { data } = await client.get('/auth/users/search', { params: { email } });
+  return data;
+}
+
+

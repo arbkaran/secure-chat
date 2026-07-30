@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from ..auth import (
     create_access_token,
     generate_otp,
+    get_current_user,
     hash_password,
     verify_password,
 )
@@ -90,3 +91,41 @@ def login(payload: LoginSchema, request: Request, db: Session = Depends(get_db))
         raise HTTPException(403, "Account not verified")
 
     return {"access_token": create_access_token(user.id), "user_id": user.id}
+
+
+@router.get("/me")
+def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "name": current_user.name,
+        "email": current_user.email,
+        "is_verified": current_user.is_verified,
+        "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
+    }
+
+
+@router.get("/users")
+def get_all_users(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    users = db.query(User).filter(User.id != current_user.id).all()
+    return [
+        {
+            "id": u.id,
+            "name": u.name,
+            "email": u.email,
+        }
+        for u in users
+    ]
+
+
+@router.get("/users/search")
+def search_user(email: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == email, User.id != current_user.id).first()
+    if not user:
+        raise HTTPException(404, "User not found")
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+    }
+
+
