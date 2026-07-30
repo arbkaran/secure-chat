@@ -1,0 +1,21 @@
+from pydantic import BaseModel, EmailStr
+
+
+class RegisterSchema(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+
+class VerifyOtpSchema(BaseModel):
+    email: EmailStr
+    code: str
+
+
+class LoginSchema(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class KeyUploadSchema(BaseModel):
+    public_key: str
