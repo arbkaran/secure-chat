@@ -112,7 +112,15 @@ export default function ChatScreen({ navigation, route }) {
             });
           }
         }
-        setMessages(decryptedHistory);
+        const uniqueHistory = [];
+        const seenIds = new Set();
+        for (const item of decryptedHistory) {
+          if (!seenIds.has(item.id)) {
+            seenIds.add(item.id);
+            uniqueHistory.push(item);
+          }
+        }
+        setMessages(uniqueHistory);
       } catch (e) {
         console.error('Failed to load message history', e);
       } finally {
@@ -143,7 +151,10 @@ export default function ChatScreen({ navigation, route }) {
             }
           } catch (_) {}
 
-          setMessages((prev) => [...prev, parsedMessage]);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === parsedMessage.id)) return prev;
+            return [...prev, parsedMessage];
+          });
 
           // Send read receipt
           const socket = getSocket();
@@ -215,7 +226,10 @@ export default function ChatScreen({ navigation, route }) {
         }
       } catch (_) {}
 
-      setMessages((prev) => [...prev, localMsg]);
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === localMsg.id)) return prev;
+        return [...prev, localMsg];
+      });
     } catch (e) {
       console.error('Encryption or send failed', e);
       Alert.alert('Error', 'Failed to encrypt or send message.');
