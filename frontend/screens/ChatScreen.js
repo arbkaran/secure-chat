@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,14 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Linking,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
+import * as MediaLibrary from 'expo-media-library';
 
 import ScreenContainer from '../components/ScreenContainer';
 import Avatar from '../components/Avatar';
@@ -38,6 +40,7 @@ export default function ChatScreen({ navigation, route }) {
   const [recipientPubKey, setRecipientPubKey] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
+  const flatListRef = useRef(null);
 
   // Cache decrypted file URIs: fileId -> localUri
   const [decryptedFiles, setDecryptedFiles] = useState({});
@@ -76,19 +79,24 @@ export default function ChatScreen({ navigation, route }) {
     async function loadHistory() {
       setLoadingHistory(true);
       try {
+        const clearedAt = await SecureStore.getItemAsync('cleared_at_' + contact.id);
         const history = await fetchMessages(contact.id);
         const decryptedHistory = [];
 
         for (const msg of history) {
+          if (clearedAt && new Date(msg.timestamp) <= new Date(clearedAt)) {
+            continue;
+          }
           try {
             const decryptedText = await hybridDecrypt(msg, privateKey);
             const isOutgoing = String(msg.sender_id) !== String(contact.id);
 
+            const utcTime = msg.timestamp.endsWith('Z') ? msg.timestamp : msg.timestamp + 'Z';
             let parsedMsg = {
               id: String(msg.message_id),
               type: isOutgoing ? 'outgoing' : 'incoming',
               text: decryptedText,
-              time: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              time: new Date(utcTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
               read: true,
             };
 
@@ -103,12 +111,12 @@ export default function ChatScreen({ navigation, route }) {
             decryptedHistory.push(parsedMsg);
           } catch (decryptionError) {
             console.error('Decryption error for history item:', decryptionError);
-            const isOutgoing = String(msg.sender_id) !== String(contact.id);
+            const utcTime = msg.timestamp.endsWith('Z') ? msg.timestamp : msg.timestamp + 'Z';
             decryptedHistory.push({
               id: String(msg.message_id),
               type: isOutgoing ? 'outgoing' : 'incoming',
               text: '🔒 [Decryption Failed]',
-              time: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              time: new Date(utcTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
           }
         }
@@ -259,10 +267,23 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   const processAndUploadFile = async (uri, filename, mimeType) => {
+    const cleanFilename = decodeURIComponent(filename);
     if (!recipientPubKey) {
       Alert.alert('Error', 'Recipient public key not loaded yet.');
       return;
     }
+    // Check file size (5MB limit)
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(uri);
+      const MAX_FILE_SIZE = 5 * 1024 * 1024;
+      if (fileInfo.exists && fileInfo.size > MAX_FILE_SIZE) {
+        Alert.alert('File Too Large', 'The file size exceeds the 5MB limit. Please select a smaller file.');
+        return;
+      }
+    } catch (sizeErr) {
+      console.warn('Could not check file size:', sizeErr);
+    }
+
     setFileUploading(true);
     try {
       // 1. Read file as Base64 string
@@ -274,9 +295,9 @@ export default function ChatScreen({ navigation, route }) {
       const encryptedFile = hybridEncrypt(fileBytes, recipientPubKey);
 
       // 3. Write encrypted data to a temporary file locally so we can upload it
-      const tempPath = `${FileSystem.cacheDirectory}${filename}.enc`;
+      const tempPath = `${FileSystem.cacheDirectory}${cleanFilename}.enc`;
       await FileSystem.writeAsStringAsync(tempPath, encryptedFile.ciphertext, {
-        encoding: 'utf8',
+        encoding: 'base64',
       });
 
       // 4. Upload encrypted file to backend
@@ -286,14 +307,14 @@ export default function ChatScreen({ navigation, route }) {
         iv: encryptedFile.iv,
         tag: encryptedFile.tag,
         fileUri: tempPath,
-        fileName: filename,
+        fileName: cleanFilename,
       });
 
       // 5. Send file metadata to recipient
       const fileMessage = {
         type: 'file',
         file_id: uploadResult.file_id,
-        filename: filename,
+        filename: cleanFilename,
         mimeType: mimeType || 'application/octet-stream',
       };
 
@@ -347,6 +368,7 @@ export default function ChatScreen({ navigation, route }) {
 
   // Download and Decrypt File
   const handleDownloadFile = async (fileId, filename) => {
+    const cleanFilename = decodeURIComponent(filename);
     if (decryptedFiles[fileId]) {
       // Already downloaded, let's open it
       await Sharing.shareAsync(decryptedFiles[fileId]);
@@ -362,14 +384,27 @@ export default function ChatScreen({ navigation, route }) {
       const decryptedBase64 = await hybridDecrypt(encryptedFileData, privateKey);
 
       // 3. Save decrypted file to local storage
-      const localPath = `${FileSystem.documentDirectory}${filename}`;
+      const localPath = `${FileSystem.documentDirectory}${cleanFilename}`;
       await FileSystem.writeAsStringAsync(localPath, decryptedBase64, {
         encoding: 'base64',
       });
 
       setDecryptedFiles((prev) => ({ ...prev, [fileId]: localPath }));
 
-      // 4. Share/Open file
+      // 4. Save to gallery if it is an image
+      if (isImage(cleanFilename)) {
+        try {
+          const permission = await MediaLibrary.requestPermissionsAsync();
+          if (permission.granted) {
+            await MediaLibrary.saveToLibraryAsync(localPath);
+            Alert.alert('Saved to Gallery', 'This photo was successfully saved to your gallery.');
+          }
+        } catch (mediaErr) {
+          console.warn('Could not save to gallery:', mediaErr);
+        }
+      }
+
+      // 5. Share/Open file
       await Sharing.shareAsync(localPath);
     } catch (e) {
       console.error('File download/decryption failed', e);
@@ -385,6 +420,7 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   const isUrl = (text) => {
+    if (typeof text !== 'string') return false;
     const pattern = new RegExp('^(https?:\\/\\/)?'+ // protocol
       '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|'+ // domain name
       '((\\d{1,3}\\.){3}\\d{1,3}))'+ // OR ip (v4) address
@@ -392,6 +428,38 @@ export default function ChatScreen({ navigation, route }) {
       '(\\?[;&a-z\\d%_.~+=-]*)?'+ // query string
       '(\\#[-a-z\\d_]*)?$','i'); // fragment locator
     return !!pattern.test(text);
+  };
+
+  const handlePressMessage = (text) => {
+    if (isUrl(text)) {
+      let url = text;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = 'https://' + url;
+      }
+      Linking.openURL(url).catch((err) => console.error("Failed to open URL", err));
+    }
+  };
+
+  const handleMorePress = () => {
+    Alert.alert(
+      'Conversation Options',
+      'Select an action:',
+      [
+        { text: 'Erase Conversation', style: 'destructive', onPress: confirmEraseConversation },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const confirmEraseConversation = async () => {
+    try {
+      const now = new Date().toISOString();
+      await SecureStore.setItemAsync('cleared_at_' + contact.id, now);
+      setMessages([]);
+      Alert.alert('Erased', 'The conversation has been erased completely.');
+    } catch (e) {
+      console.error('Failed to erase conversation', e);
+    }
   };
 
   return (
@@ -405,7 +473,7 @@ export default function ChatScreen({ navigation, route }) {
           <Text style={styles.headerName}>{contact.name}</Text>
           <Text style={styles.headerStatus}>{contact.status === 'online' ? 'Online' : 'Offline'}</Text>
         </View>
-        <Pressable hitSlop={8}>
+        <Pressable onPress={handleMorePress} hitSlop={8}>
           <MoreVerticalIcon color={colors.textSecondary} />
         </Pressable>
       </View>
@@ -422,9 +490,11 @@ export default function ChatScreen({ navigation, route }) {
           </View>
         ) : null}
         <FlatList
+          ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messageList}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) => {
             const isOutgoing = item.type === 'outgoing';
             const hasFile = !!item.fileData;
@@ -458,7 +528,10 @@ export default function ChatScreen({ navigation, route }) {
                       </Pressable>
                     </View>
                   ) : (
-                    <Text style={[styles.bubbleText, isOutgoing && styles.bubbleTextOutgoing, isUrl(item.text) && styles.linkText]}>
+                    <Text 
+                      style={[styles.bubbleText, isOutgoing && styles.bubbleTextOutgoing, isUrl(item.text) && styles.linkText]}
+                      onPress={isUrl(item.text) ? () => handlePressMessage(item.text) : undefined}
+                    >
                       {item.text}
                     </Text>
                   )}
@@ -513,15 +586,16 @@ function createStyles(colors) {
       gap: 12,
       paddingHorizontal: 16,
       paddingVertical: 14,
+      backgroundColor: colors.screen,
       borderBottomWidth: 1,
-      borderBottomColor: colors.surface,
+      borderBottomColor: colors.border,
     },
     headerInfo: {
       flex: 1,
     },
     headerName: {
       color: colors.textPrimary,
-      fontSize: 15.5,
+      fontSize: 16,
       fontFamily: 'Inter_600SemiBold',
     },
     headerStatus: {
@@ -532,12 +606,13 @@ function createStyles(colors) {
     messageList: {
       gap: 14,
       padding: 16,
+      backgroundColor: colors.surfaceAlt,
     },
     bubbleWrap: {
       alignSelf: 'flex-start',
-      maxWidth: '78%',
+      maxWidth: '75%',
       gap: 4,
-      marginBottom: 14,
+      marginBottom: 10,
     },
     bubbleWrapOutgoing: {
       alignSelf: 'flex-end',
@@ -545,16 +620,23 @@ function createStyles(colors) {
     },
     bubble: {
       paddingHorizontal: 16,
-      paddingVertical: 12,
+      paddingVertical: 10,
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.02,
+      shadowRadius: 3,
+      elevation: 1,
     },
     bubbleIncoming: {
-      backgroundColor: colors.surfaceAlt,
-      borderRadius: 18,
+      backgroundColor: colors.screen,
+      borderRadius: 16,
       borderBottomLeftRadius: 4,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     bubbleOutgoing: {
       backgroundColor: colors.accent,
-      borderRadius: 18,
+      borderRadius: 16,
       borderBottomRightRadius: 4,
     },
     bubbleText: {
@@ -564,12 +646,12 @@ function createStyles(colors) {
       fontFamily: 'Inter_400Regular',
     },
     bubbleTextOutgoing: {
-      color: colors.onAccent,
-      fontFamily: 'Inter_500Medium',
+      color: '#FFFFFF',
+      fontFamily: 'Inter_400Regular',
     },
     linkText: {
       textDecorationLine: 'underline',
-      color: '#2F80ED',
+      color: '#0A84FF',
     },
     fileContainer: {
       gap: 8,
@@ -581,17 +663,17 @@ function createStyles(colors) {
       fontFamily: 'Inter_600SemiBold',
     },
     fileTitleOutgoing: {
-      color: colors.onAccent,
+      color: '#FFFFFF',
     },
     imagePreview: {
-      width: 150,
-      height: 150,
+      width: 180,
+      height: 120,
       borderRadius: 10,
       resizeMode: 'cover',
     },
     fileActionButton: {
-      backgroundColor: colors.surface,
-      paddingVertical: 6,
+      backgroundColor: colors.surfaceAlt,
+      paddingVertical: 8,
       paddingHorizontal: 12,
       borderRadius: 8,
       alignItems: 'center',
@@ -605,13 +687,14 @@ function createStyles(colors) {
       fontFamily: 'Inter_600SemiBold',
     },
     fileActionTextOutgoing: {
-      color: colors.onAccent,
+      color: '#FFFFFF',
     },
     meta: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 4,
       paddingLeft: 4,
+      marginTop: 2,
     },
     metaOutgoing: {
       paddingLeft: 0,
@@ -620,13 +703,15 @@ function createStyles(colors) {
     metaTime: {
       color: colors.textTertiary,
       fontSize: 11,
+      fontFamily: 'Inter_400Regular',
     },
     typing: {
       color: colors.textTertiary,
       fontSize: 12.5,
       fontStyle: 'italic',
       paddingHorizontal: 20,
-      paddingBottom: 6,
+      paddingBottom: 8,
+      backgroundColor: colors.surfaceAlt,
     },
     uploadingLoader: {
       flexDirection: 'row',
@@ -634,6 +719,7 @@ function createStyles(colors) {
       gap: 8,
       paddingHorizontal: 20,
       paddingBottom: 8,
+      backgroundColor: colors.surfaceAlt,
     },
     uploadingText: {
       color: colors.textSecondary,
@@ -646,35 +732,40 @@ function createStyles(colors) {
       gap: 10,
       paddingHorizontal: 16,
       paddingTop: 10,
-      paddingBottom: 20,
+      paddingBottom: 24,
+      backgroundColor: colors.screen,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
     },
     attachButton: {
-      width: 38,
-      height: 38,
+      width: 40,
+      height: 40,
       borderRadius: 12,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surfaceAlt,
       alignItems: 'center',
       justifyContent: 'center',
     },
     inputPill: {
       flex: 1,
-      minHeight: 44,
-      borderRadius: 22,
-      backgroundColor: colors.surface,
+      minHeight: 40,
+      borderRadius: 20,
+      backgroundColor: colors.surfaceAlt,
       justifyContent: 'center',
       paddingHorizontal: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     input: {
       color: colors.textPrimary,
       fontSize: 14.5,
       fontFamily: 'Inter_400Regular',
-      paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+      paddingVertical: Platform.OS === 'ios' ? 8 : 4,
       maxHeight: 100,
     },
     sendButton: {
-      width: 38,
-      height: 38,
-      borderRadius: 19,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: colors.accent,
       alignItems: 'center',
       justifyContent: 'center',
@@ -684,8 +775,8 @@ function createStyles(colors) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
-      paddingVertical: 10,
-      backgroundColor: colors.surface,
+      paddingVertical: 12,
+      backgroundColor: colors.surfaceAlt,
     },
     historyLoaderText: {
       color: colors.textSecondary,

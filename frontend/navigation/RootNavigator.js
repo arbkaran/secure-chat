@@ -11,6 +11,8 @@ import SettingsScreen from '../screens/SettingsScreen';
 import { ChatBubbleIcon, GearIcon } from '../components/icons';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/AuthContext';
+import { useWindowDimensions, Platform } from 'react-native';
+import DesktopDashboard from '../screens/DesktopDashboard';
 
 const AuthStackNav = createNativeStackNavigator();
 const ChatsStack = createNativeStackNavigator();
@@ -74,6 +76,9 @@ export default function RootNavigator() {
   const { isLoggedIn } = useAuth();
   const { colors, isDark } = useTheme();
 
+  const { width } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width >= 768;
+
   const navTheme = {
     ...(isDark ? DarkTheme : DefaultTheme),
     colors: {
@@ -88,7 +93,7 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer theme={navTheme}>
-      {isLoggedIn ? <MainTabs /> : <AuthStack />}
+      {isLoggedIn ? (isDesktop ? <DesktopDashboard /> : <MainTabs />) : <AuthStack />}
     </NavigationContainer>
   );
 }

@@ -39,30 +39,34 @@ export default function RegisterScreen({ navigation }) {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={styles.container}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <Text style={styles.title}>Create your account</Text>
-          <Text style={styles.subtitle}>Your keys are generated on this device and never leave it.</Text>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.cardWrapper}>
+            <View style={styles.card}>
+              <Text style={styles.title}>Create Account</Text>
+              <Text style={styles.subtitle}>Keys are generated locally and never leave this device.</Text>
 
-          <TextField label="Full name" value={name} onChangeText={setName} placeholder="Your name" autoCapitalize="words" />
-          <TextField label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" />
-          <TextField label="Password" value={password} onChangeText={setPassword} placeholder="Create a password" secureTextEntry style={{ marginBottom: spacing.tight }} />
+              <TextField label="Full name" value={name} onChangeText={setName} placeholder="John Doe" autoCapitalize="words" />
+              <TextField label="Email Address" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" />
+              <TextField label="Password" value={password} onChangeText={setPassword} placeholder="Create a secure password" secureTextEntry style={{ marginBottom: 8 }} />
 
-          <View style={styles.strengthRow}>
-            {[0, 1, 2].map((i) => (
-              <View key={i} style={[styles.strengthBar, i < strength && styles.strengthBarFilled]} />
-            ))}
+              <View style={styles.strengthRow}>
+                {[0, 1, 2].map((i) => (
+                  <View key={i} style={[styles.strengthBar, i < strength && styles.strengthBarFilled]} />
+                ))}
+              </View>
+
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+              <Button title={loading ? 'Creating account…' : 'Register'} onPress={handleRegister} disabled={loading} />
+
+              <Pressable style={styles.loginRow} onPress={() => navigation.navigate('Login')}>
+                <Text style={styles.loginPrompt}>Already have an account?</Text>
+                <Text style={styles.loginLink}>Log in</Text>
+              </Pressable>
+            </View>
           </View>
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <Button title={loading ? 'Creating account…' : 'Create Account'} onPress={handleRegister} disabled={loading} />
-
-          <Pressable style={styles.loginRow} onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.loginPrompt}>Already have an account?</Text>
-            <Text style={styles.loginLink}>Log in</Text>
-          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenContainer>
@@ -72,29 +76,54 @@ export default function RegisterScreen({ navigation }) {
 function createStyles(colors, spacing) {
   return StyleSheet.create({
     flex: { flex: 1 },
-    content: {
+    container: {
+      backgroundColor: colors.background,
+    },
+    scrollContent: {
       flexGrow: 1,
-      paddingHorizontal: spacing.screen,
-      paddingTop: 52,
-      paddingBottom: spacing.screen,
+      justifyContent: 'center',
+      paddingVertical: 40,
+    },
+    cardWrapper: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      width: '100%',
+      maxWidth: 400,
+      padding: 32,
+      borderRadius: 20,
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.05,
+      shadowRadius: 16,
+      elevation: 4,
+      alignItems: 'stretch',
     },
     title: {
       color: colors.textPrimary,
-      fontSize: 28,
+      fontSize: 26,
       fontFamily: 'Inter_700Bold',
       letterSpacing: -0.5,
+      textAlign: 'center',
       marginBottom: 6,
     },
     subtitle: {
       color: colors.textSecondary,
-      fontSize: 15,
+      fontSize: 14.5,
       fontFamily: 'Inter_400Regular',
-      marginBottom: spacing.section + 8,
+      textAlign: 'center',
+      marginBottom: 24,
+      lineHeight: 20,
     },
     strengthRow: {
       flexDirection: 'row',
       gap: 6,
-      marginBottom: spacing.section,
+      marginBottom: 24,
+      marginTop: 2,
     },
     strengthBar: {
       flex: 1,
@@ -110,11 +139,13 @@ function createStyles(colors, spacing) {
       fontSize: 13,
       fontFamily: 'Inter_400Regular',
       marginBottom: 12,
+      textAlign: 'center',
     },
     loginRow: {
       flexDirection: 'row',
       justifyContent: 'center',
       gap: 6,
+      marginTop: 24,
     },
     loginPrompt: {
       color: colors.textSecondary,

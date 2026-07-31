@@ -52,9 +52,7 @@ export async function uploadFile({ receiverId, encryptedAesKey, iv, tag, fileUri
   form.append('tag', tag);
   form.append('file', { uri: fileUri, name: fileName, type: 'application/octet-stream' });
 
-  const { data } = await client.post('/files/upload', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  const { data } = await client.post('/files/upload', form);
   return data;
 }
 

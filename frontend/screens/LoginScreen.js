@@ -40,55 +40,58 @@ export default function LoginScreen({ navigation }) {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={styles.container}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.content}>
-          <View style={styles.iconBadge}>
-            <ShieldIcon size={26} color={colors.accent} />
+        <View style={styles.cardWrapper}>
+          <View style={styles.card}>
+            <View style={styles.iconBadge}>
+              <ShieldIcon size={32} color={colors.accent} />
+            </View>
+
+            <Text style={styles.title}>SecureChat</Text>
+            <Text style={styles.subtitle}>Secure LAN Messaging</Text>
+
+            <TextField
+              label="Email Address"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+
+            <TextField
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••••"
+              secureTextEntry={!showPassword}
+              rightIcon={<EyeIcon off={showPassword} color={colors.textTertiary} />}
+              onRightIconPress={() => setShowPassword((v) => !v)}
+            />
+
+            <Pressable style={[styles.forgotRow, { opacity: 0.5 }]} disabled>
+              <Text style={styles.forgotText}>Forgot password? (Disabled)</Text>
+            </Pressable>
+
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+            <Button title={loading ? 'Logging in…' : 'Log In'} onPress={handleLogin} disabled={loading} />
+
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>OR</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Pressable style={styles.registerRow} onPress={() => navigation.navigate('Register')}>
+              <Text style={styles.registerPrompt}>Don't have an account?</Text>
+              <Text style={styles.registerLink}>Register</Text>
+            </Pressable>
           </View>
-
-          <Text style={styles.title}>Welcome back</Text>
-          <Text style={styles.subtitle}>Log in to continue your encrypted conversations.</Text>
-
-          <TextField
-            label="Email"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            keyboardType="email-address"
-          />
-
-          <TextField
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Enter your password"
-            secureTextEntry={!showPassword}
-            rightIcon={<EyeIcon off={showPassword} color={colors.textTertiary} />}
-            onRightIconPress={() => setShowPassword((v) => !v)}
-          />
-
-          <Pressable style={styles.forgotRow} onPress={() => {}}>
-            <Text style={styles.forgotText}>Forgot password?</Text>
-          </Pressable>
-
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
-
-          <Button title={loading ? 'Logging in…' : 'Log In'} onPress={handleLogin} disabled={loading} />
-
-          <View style={styles.dividerRow}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>OR</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <Pressable style={styles.registerRow} onPress={() => navigation.navigate('Register')}>
-            <Text style={styles.registerPrompt}>Don't have an account?</Text>
-            <Text style={styles.registerLink}>Register</Text>
-          </Pressable>
         </View>
       </KeyboardAvoidingView>
 
@@ -100,39 +103,59 @@ export default function LoginScreen({ navigation }) {
 function createStyles(colors, spacing) {
   return StyleSheet.create({
     flex: { flex: 1 },
-    content: {
+    container: {
+      backgroundColor: colors.background,
+    },
+    cardWrapper: {
       flex: 1,
       justifyContent: 'center',
-      paddingHorizontal: spacing.screen,
+      alignItems: 'center',
+      paddingHorizontal: 20,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      width: '100%',
+      maxWidth: 400,
+      padding: 32,
+      borderRadius: 20,
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.05,
+      shadowRadius: 16,
+      elevation: 4,
+      alignItems: 'stretch',
     },
     iconBadge: {
-      width: 56,
-      height: 56,
-      borderRadius: 16,
+      width: 64,
+      height: 64,
+      borderRadius: 18,
       backgroundColor: colors.accentSoft,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: spacing.section,
+      alignSelf: 'center',
+      marginBottom: 20,
     },
     title: {
       color: colors.textPrimary,
-      fontSize: 28,
+      fontSize: 26,
       fontFamily: 'Inter_700Bold',
       letterSpacing: -0.5,
+      textAlign: 'center',
       marginBottom: 6,
     },
     subtitle: {
       color: colors.textSecondary,
       fontSize: 15,
       fontFamily: 'Inter_400Regular',
-      marginBottom: spacing.section + 8,
+      textAlign: 'center',
+      marginBottom: 24,
     },
     forgotRow: {
       alignSelf: 'flex-end',
-      marginBottom: 28,
+      marginBottom: 24,
     },
     forgotText: {
-      color: colors.accent,
+      color: colors.textTertiary,
       fontSize: 13,
       fontFamily: 'Inter_500Medium',
     },
@@ -141,12 +164,13 @@ function createStyles(colors, spacing) {
       fontSize: 13,
       fontFamily: 'Inter_400Regular',
       marginBottom: 12,
+      textAlign: 'center',
     },
     dividerRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      marginBottom: spacing.section,
+      marginVertical: 20,
     },
     dividerLine: {
       flex: 1,

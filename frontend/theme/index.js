@@ -4,37 +4,37 @@ import { useColorScheme } from 'react-native';
 // light palette derived for the same roles.
 
 export const darkColors = {
-  background: '#0B0F13',
-  screen: '#10151B',
-  surface: '#171E26',
-  surfaceAlt: '#1B222B',
-  border: '#232B35',
-  accent: '#4FB8AE',
-  accentSoft: 'rgba(79,184,174,0.15)',
-  accentBorder: 'rgba(79,184,174,0.25)',
-  online: '#4CAF7D',
-  destructive: '#C97A73',
-  textPrimary: '#EDF1F5',
-  textSecondary: '#8B97A5',
-  textTertiary: '#5B6572',
-  onAccent: '#0B0F13',
+  background: '#0F172A', // Slate 900
+  screen: '#1E293B',     // Slate 800
+  surface: '#1E293B',    // Slate 800
+  surfaceAlt: '#0F172A', // Slate 900
+  border: '#334155',     // Slate 700
+  accent: '#3B82F6',     // Blue 500
+  accentSoft: 'rgba(59, 130, 246, 0.15)',
+  accentBorder: 'rgba(59, 130, 246, 0.3)',
+  online: '#22C55E',
+  destructive: '#EF4444',
+  textPrimary: '#F8FAFC',
+  textSecondary: '#94A3B8',
+  textTertiary: '#64748B',
+  onAccent: '#FFFFFF',
 };
 
 export const lightColors = {
-  background: '#EDF0F3',
+  background: '#F8FAFC',
   screen: '#FFFFFF',
-  surface: '#F3F5F8',
-  surfaceAlt: '#E9EDF1',
-  border: '#E1E6EB',
-  accent: '#1F8478',
-  accentSoft: 'rgba(31,132,120,0.12)',
-  accentBorder: 'rgba(31,132,120,0.30)',
-  online: '#2FA06A',
-  destructive: '#B8493E',
-  textPrimary: '#12181F',
-  textSecondary: '#57626D',
-  textTertiary: '#8A94A0',
-  onAccent: '#0B0F13',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F1F5F9',
+  border: '#E2E8F0',
+  accent: '#2563EB',
+  accentSoft: 'rgba(37, 99, 235, 0.1)',
+  accentBorder: 'rgba(37, 99, 235, 0.25)',
+  online: '#22C55E',
+  destructive: '#EF4444',
+  textPrimary: '#0F172A',
+  textSecondary: '#64748B',
+  textTertiary: '#94A3B8',
+  onAccent: '#FFFFFF',
 };
 
 export const spacing = {
@@ -60,11 +60,10 @@ export const typography = {
   caption: { fontFamily: 'Inter_400Regular', fontSize: 11 },
 };
 
-// Falls back to dark when the system reports no preference (`null`), since
-// that's this app's default aesthetic and matches the original design file.
+// Falls back to light blue mode unless system is explicitly set to dark.
 export function useTheme() {
   const scheme = useColorScheme();
-  const isDark = scheme !== 'light';
+  const isDark = scheme === 'dark';
   const colors = isDark ? darkColors : lightColors;
   return { colors, spacing, radius, typography, isDark };
 }

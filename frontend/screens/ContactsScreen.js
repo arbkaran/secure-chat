@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, FlatList, Pressable, StyleSheet } from 'react-native';
+import { View, Text, TextInput, FlatList, Pressable, StyleSheet, Alert } from 'react-native';
 import ScreenContainer from '../components/ScreenContainer';
 import Avatar from '../components/Avatar';
 import { SearchIcon, PlusIcon } from '../components/icons';
@@ -7,16 +7,35 @@ import { useTheme } from '../theme';
 import { connectSocket } from '../api/socket';
 import useSocketListener from '../hooks/useSocketListener';
 import { fetchAllUsers, searchUserByEmail } from '../api/client';
+import * as SecureStore from 'expo-secure-store';
+import { useToast } from '../context/ToastContext';
+import { hybridDecrypt } from '../crypto/hybrid';
 
 export default function ContactsScreen({ navigation }) {
   const { colors, spacing } = useTheme();
   const styles = useMemo(() => createStyles(colors, spacing), [colors, spacing]);
+  const { showToast } = useToast();
   const [query, setQuery] = useState('');
   const [contacts, setContacts] = useState([]);
   const [liveStatus, setLiveStatus] = useState({});
+  const [deletedIds, setDeletedIds] = useState([]);
   const [showAddContact, setShowAddContact] = useState(false);
   const [emailInput, setEmailInput] = useState('');
   const [addError, setAddError] = useState('');
+
+  useEffect(() => {
+    async function loadDeletedList() {
+      try {
+        const stored = await SecureStore.getItemAsync('deleted_contacts_list');
+        if (stored) {
+          setDeletedIds(stored.split(','));
+        }
+      } catch (e) {
+        console.error('Failed to load deleted list', e);
+      }
+    }
+    loadDeletedList();
+  }, []);
 
   useEffect(() => {
     connectSocket().catch(() => {});
@@ -52,6 +71,29 @@ export default function ContactsScreen({ navigation }) {
     onStatusUpdate: ({ user_id, status }) => {
       setLiveStatus((prev) => ({ ...prev, [user_id]: status }));
     },
+    onMessage: async (payload) => {
+      const enabled = await SecureStore.getItemAsync('notifications_enabled');
+      if (enabled === 'false') return;
+
+      try {
+        const key = await SecureStore.getItemAsync('rsa_private_key');
+        if (!key) return;
+
+        const decrypted = await hybridDecrypt(payload, key);
+        let preview = decrypted;
+        try {
+          const fileData = JSON.parse(decrypted);
+          if (fileData.type === 'file') preview = `📎 File: ${fileData.filename}`;
+        } catch (_) {}
+
+        const sender = contacts.find((c) => String(c.id) === String(payload.sender_id));
+        const senderName = sender ? sender.name : 'Unknown User';
+
+        showToast(`New message from ${senderName}: ${preview}`, 'success');
+      } catch (err) {
+        console.error('Failed to decrypt in-app toast message', err);
+      }
+    }
   });
 
   const contactsWithLiveStatus = useMemo(
@@ -60,10 +102,37 @@ export default function ContactsScreen({ navigation }) {
   );
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return contactsWithLiveStatus;
+    let base = contactsWithLiveStatus.filter((c) => !deletedIds.includes(c.id));
+    if (!query.trim()) return base;
     const q = query.trim().toLowerCase();
-    return contactsWithLiveStatus.filter((c) => c.name.toLowerCase().includes(q));
-  }, [query, contactsWithLiveStatus]);
+    return base.filter((c) => c.name.toLowerCase().includes(q));
+  }, [query, contactsWithLiveStatus, deletedIds]);
+
+  const handleLongPressContact = (contact) => {
+    Alert.alert(
+      'Manage Contact',
+      `What would you like to do with ${contact.name}?`,
+      [
+        {
+          text: 'Delete Contact',
+          style: 'destructive',
+          onPress: () => confirmDeleteContact(contact.id),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const confirmDeleteContact = async (contactId) => {
+    try {
+      const updated = [...deletedIds, String(contactId)];
+      setDeletedIds(updated);
+      await SecureStore.setItemAsync('deleted_contacts_list', updated.join(','));
+      showToast('Contact deleted from list.', 'success');
+    } catch (e) {
+      console.error('Failed to delete contact', e);
+    }
+  };
 
   async function handleAddContact() {
     const trimmedEmail = emailInput.trim().toLowerCase();
@@ -153,6 +222,7 @@ export default function ContactsScreen({ navigation }) {
           <Pressable
             style={styles.row}
             onPress={() => navigation.navigate('Chat', { contact: item })}
+            onLongPress={() => handleLongPressContact(item)}
           >
             <Avatar initials={item.initials} status={item.status} />
             <View style={styles.rowBody}>
@@ -189,65 +259,74 @@ function createStyles(colors, spacing) {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingHorizontal: 20,
-      paddingTop: 4,
-      paddingBottom: 12,
+      paddingHorizontal: 24,
+      paddingTop: 16,
+      paddingBottom: 16,
+      backgroundColor: colors.screen,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
     },
     headerTitle: {
       color: colors.textPrimary,
-      fontSize: 26,
+      fontSize: 24,
       fontFamily: 'Inter_700Bold',
       letterSpacing: -0.5,
     },
     headerButton: {
-      width: 36,
-      height: 36,
-      borderRadius: 10,
-      backgroundColor: colors.surface,
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      backgroundColor: colors.surfaceAlt,
       alignItems: 'center',
       justifyContent: 'center',
     },
     addContactCard: {
       backgroundColor: colors.surface,
-      marginHorizontal: 20,
-      marginBottom: 16,
-      borderRadius: 14,
-      padding: 16,
+      marginHorizontal: 24,
+      marginTop: 16,
+      marginBottom: 8,
+      borderRadius: 16,
+      padding: 20,
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.05,
+      shadowRadius: 10,
+      elevation: 2,
       borderWidth: 1,
       borderColor: colors.border,
     },
     addContactTitle: {
       color: colors.textPrimary,
-      fontSize: 15,
+      fontSize: 16,
       fontFamily: 'Inter_600SemiBold',
-      marginBottom: 10,
+      marginBottom: 12,
     },
     addContactInput: {
-      height: 40,
+      height: 44,
       borderRadius: 10,
-      backgroundColor: colors.background,
+      backgroundColor: colors.surfaceAlt,
       borderColor: colors.border,
       borderWidth: 1,
-      paddingHorizontal: 12,
+      paddingHorizontal: 14,
       color: colors.textPrimary,
-      fontSize: 14,
+      fontSize: 14.5,
       fontFamily: 'Inter_400Regular',
-      marginBottom: 8,
+      marginBottom: 12,
     },
     addErrorText: {
       color: colors.destructive,
-      fontSize: 12,
+      fontSize: 12.5,
       fontFamily: 'Inter_400Regular',
-      marginBottom: 8,
+      marginBottom: 12,
     },
     addContactButtons: {
       flexDirection: 'row',
       justifyContent: 'flex-end',
-      gap: 10,
+      gap: 12,
     },
     addButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 16,
       borderRadius: 8,
       backgroundColor: colors.accent,
     },
@@ -255,27 +334,30 @@ function createStyles(colors, spacing) {
       backgroundColor: 'transparent',
     },
     addButtonText: {
-      color: colors.onAccent || '#FFFFFF',
-      fontSize: 13,
+      color: '#FFFFFF',
+      fontSize: 13.5,
       fontFamily: 'Inter_600SemiBold',
     },
     cancelButtonText: {
       color: colors.textSecondary,
-      fontSize: 13,
+      fontSize: 13.5,
       fontFamily: 'Inter_500Medium',
     },
     searchWrap: {
-      paddingHorizontal: 20,
-      paddingBottom: 16,
+      paddingHorizontal: 24,
+      paddingTop: 16,
+      paddingBottom: 8,
     },
     searchBar: {
       height: 44,
       borderRadius: 12,
-      backgroundColor: colors.surface,
+      backgroundColor: colors.surfaceAlt,
       flexDirection: 'row',
       alignItems: 'center',
       gap: 10,
       paddingHorizontal: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     searchInput: {
       flex: 1,
@@ -285,14 +367,26 @@ function createStyles(colors, spacing) {
       padding: 0,
     },
     listContent: {
+      paddingHorizontal: 16,
+      paddingTop: 8,
       paddingBottom: spacing.screen,
     },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 12,
-      paddingHorizontal: 20,
-      paddingVertical: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+      backgroundColor: colors.surface,
+      borderRadius: 16,
+      marginBottom: 10,
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.03,
+      shadowRadius: 6,
+      elevation: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
     },
     rowBody: {
       flex: 1,
@@ -309,8 +403,7 @@ function createStyles(colors, spacing) {
       fontFamily: 'Inter_600SemiBold',
     },
     nameUnread: {
-      color: colors.textSecondary,
-      fontFamily: 'Inter_500Medium',
+      fontFamily: 'Inter_700Bold',
     },
     time: {
       color: colors.textTertiary,
@@ -319,7 +412,7 @@ function createStyles(colors, spacing) {
     },
     timeUnread: {
       color: colors.accent,
-      fontFamily: 'Inter_500Medium',
+      fontFamily: 'Inter_600SemiBold',
     },
     rowBottom: {
       flexDirection: 'row',
@@ -333,20 +426,22 @@ function createStyles(colors, spacing) {
       fontFamily: 'Inter_400Regular',
     },
     previewUnread: {
-      color: colors.textTertiary,
+      color: colors.textPrimary,
+      fontFamily: 'Inter_500Medium',
     },
     badge: {
-      width: 19,
+      minWidth: 19,
       height: 19,
       borderRadius: 10,
       backgroundColor: colors.accent,
       alignItems: 'center',
       justifyContent: 'center',
+      paddingHorizontal: 5,
       marginLeft: 8,
     },
     badgeText: {
-      color: colors.onAccent,
-      fontSize: 11,
+      color: '#FFFFFF',
+      fontSize: 10.5,
       fontFamily: 'Inter_700Bold',
     },
   });

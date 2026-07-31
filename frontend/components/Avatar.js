@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { useTheme } from '../theme';
 
 const PALETTE = [
@@ -13,7 +13,7 @@ function paletteFor(initials) {
   return PALETTE[code % PALETTE.length];
 }
 
-export default function Avatar({ initials, size = 52, status, dimmed = false }) {
+export default function Avatar({ initials, size = 52, status, dimmed = false, imageUri }) {
   const { colors } = useTheme();
   const { bg, fg } = paletteFor(initials);
   const dotSize = Math.round(size * 0.25);
@@ -28,12 +28,17 @@ export default function Avatar({ initials, size = 52, status, dimmed = false }) 
             height: size,
             borderRadius: Math.round(size * 0.3),
             backgroundColor: dimmed ? colors.surface : bg,
+            overflow: 'hidden',
           },
         ]}
       >
-        <Text style={[styles.initials, { fontSize: size * 0.32, color: dimmed ? colors.textTertiary : fg }]}>
-          {initials}
-        </Text>
+        {imageUri ? (
+          <Image source={{ uri: imageUri }} style={{ width: size, height: size, resizeMode: 'cover' }} />
+        ) : (
+          <Text style={[styles.initials, { fontSize: size * 0.32, color: dimmed ? colors.textTertiary : fg }]}>
+            {initials}
+          </Text>
+        )}
       </View>
       {status ? (
         <View
