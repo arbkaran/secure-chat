@@ -267,7 +267,7 @@ export default function ChatScreen({ navigation, route }) {
     try {
       // 1. Read file as Base64 string
       const fileBytes = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: 'base64',
       });
 
       // 2. Encrypt file Base64 content using hybrid encryption
@@ -276,7 +276,7 @@ export default function ChatScreen({ navigation, route }) {
       // 3. Write encrypted data to a temporary file locally so we can upload it
       const tempPath = `${FileSystem.cacheDirectory}${filename}.enc`;
       await FileSystem.writeAsStringAsync(tempPath, encryptedFile.ciphertext, {
-        encoding: FileSystem.EncodingType.UTF8,
+        encoding: 'utf8',
       });
 
       // 4. Upload encrypted file to backend
@@ -364,7 +364,7 @@ export default function ChatScreen({ navigation, route }) {
       // 3. Save decrypted file to local storage
       const localPath = `${FileSystem.documentDirectory}${filename}`;
       await FileSystem.writeAsStringAsync(localPath, decryptedBase64, {
-        encoding: FileSystem.EncodingType.Base64,
+        encoding: 'base64',
       });
 
       setDecryptedFiles((prev) => ({ ...prev, [fileId]: localPath }));
