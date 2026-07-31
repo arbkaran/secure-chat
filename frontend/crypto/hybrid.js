@@ -1,3 +1,4 @@
+import { Buffer } from 'buffer';
 import {
   createCipheriv,
   createDecipheriv,
@@ -6,6 +7,7 @@ import {
   randomBytes,
   constants,
 } from './cryptoAdapter';
+
 
 
 // Fresh AES key + nonce per call — never reuse a nonce with the same key.

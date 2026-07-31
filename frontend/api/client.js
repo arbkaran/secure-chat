@@ -80,4 +80,10 @@ export async function searchUserByEmail(email) {
   return data;
 }
 
+export async function fetchMessages(contactId) {
+  const { data } = await client.get(`/auth/messages/${contactId}`);
+  return data;
+}
+
+
 

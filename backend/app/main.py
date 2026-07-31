@@ -4,6 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import auth_routes, files_routes, keys_routes
 from .sockets import sio
+from .database import Base, engine
+from . import models
+
+# Initialize database tables on startup
+Base.metadata.create_all(bind=engine)
+
 
 app = FastAPI(title="SecureChat backend")
 

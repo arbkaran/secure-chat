@@ -33,7 +33,7 @@ export default function ContactsScreen({ navigation }) {
             .join('')
             .toUpperCase()
             .slice(0, 2),
-          status: 'offline',
+          status: u.status || 'offline',
           lastMessage: 'Start a new conversation',
           time: '',
           unread: 0,
@@ -83,7 +83,7 @@ export default function ContactsScreen({ navigation }) {
           .join('')
           .toUpperCase()
           .slice(0, 2),
-        status: 'offline',
+        status: user.status || 'offline',
         lastMessage: 'Start a new conversation',
         time: '',
         unread: 0,

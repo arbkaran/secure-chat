@@ -12,8 +12,9 @@ from ..auth import (
 )
 from ..database import get_db
 from ..email_otp import send_otp_email
-from ..models import LoginLog, OTPCode, User
+from ..models import LoginLog, OTPCode, User, Message
 from ..schemas import LoginSchema, RegisterSchema, VerifyOtpSchema
+from ..sockets import online_sessions
 
 router = APIRouter(prefix="/auth")
 
@@ -112,6 +113,7 @@ def get_all_users(current_user: User = Depends(get_current_user), db: Session = 
             "id": u.id,
             "name": u.name,
             "email": u.email,
+            "status": "online" if u.id in online_sessions else "offline",
         }
         for u in users
     ]
@@ -126,6 +128,33 @@ def search_user(email: str, current_user: User = Depends(get_current_user), db: 
         "id": user.id,
         "name": user.name,
         "email": user.email,
+        "status": "online" if user.id in online_sessions else "offline",
     }
+
+
+@router.get("/messages/{contact_id}")
+def get_messages(contact_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    messages = (
+        db.query(Message)
+        .filter(
+            ((Message.sender_id == current_user.id) & (Message.receiver_id == contact_id)) |
+            ((Message.sender_id == contact_id) & (Message.receiver_id == current_user.id))
+        )
+        .order_by(Message.timestamp.asc())
+        .all()
+    )
+    return [
+        {
+            "message_id": m.id,
+            "sender_id": m.sender_id,
+            "receiver_id": m.receiver_id,
+            "encrypted_aes_key": m.encrypted_aes_key,
+            "iv": m.iv,
+            "tag": m.tag,
+            "ciphertext": m.encrypted_content,
+            "timestamp": m.timestamp.isoformat(),
+        }
+        for m in messages
+    ]
 
 
