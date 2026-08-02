@@ -1,28 +1,50 @@
 import { useEffect, useRef } from 'react';
 import { getSocket } from '../api/socket';
 
-// Subscribes the currently-connected socket to the app's real-time events.
-// Handlers are read from a ref so callers can pass inline functions without
-// re-subscribing on every render.
-export default function useSocketListener({ onMessage, onTyping, onStatusUpdate, onReadReceipt } = {}) {
-  const handlersRef = useRef({ onMessage, onTyping, onStatusUpdate, onReadReceipt });
-
-  useEffect(() => {
-    handlersRef.current = { onMessage, onTyping, onStatusUpdate, onReadReceipt };
+export default function useSocketListener({
+  onMessage,
+  onTyping,
+  onStatusUpdate,
+  onReadReceipt,
+  onConnectionRequest,
+  onConnectionAccepted,
+  onConnectionRejected,
+} = {}) {
+  const handlersRef = useRef({
+    onMessage,
+    onTyping,
+    onStatusUpdate,
+    onReadReceipt,
+    onConnectionRequest,
+    onConnectionAccepted,
+    onConnectionRejected,
   });
 
   useEffect(() => {
-    const handleMessage = (payload) => handlersRef.current.onMessage?.(payload);
-    const handleTyping = (payload) => handlersRef.current.onTyping?.(payload);
-    const handleStatusUpdate = (payload) => handlersRef.current.onStatusUpdate?.(payload);
-    const handleReadReceipt = (payload) => handlersRef.current.onReadReceipt?.(payload);
+    handlersRef.current = {
+      onMessage,
+      onTyping,
+      onStatusUpdate,
+      onReadReceipt,
+      onConnectionRequest,
+      onConnectionAccepted,
+      onConnectionRejected,
+    };
+  });
+
+  useEffect(() => {
+    const handleMessage = (p) => handlersRef.current.onMessage?.(p);
+    const handleTyping = (p) => handlersRef.current.onTyping?.(p);
+    const handleStatusUpdate = (p) => handlersRef.current.onStatusUpdate?.(p);
+    const handleReadReceipt = (p) => handlersRef.current.onReadReceipt?.(p);
+    const handleConnectionRequest = (p) => handlersRef.current.onConnectionRequest?.(p);
+    const handleConnectionAccepted = (p) => handlersRef.current.onConnectionAccepted?.(p);
+    const handleConnectionRejected = (p) => handlersRef.current.onConnectionRejected?.(p);
 
     let cancelled = false;
     let attachedSocket = null;
     let retryTimer = null;
 
-    // connectSocket() resolves async, so the socket instance may not exist
-    // yet on mount — poll briefly until it does rather than missing events.
     function trySubscribe() {
       const socket = getSocket();
       if (socket) {
@@ -31,6 +53,9 @@ export default function useSocketListener({ onMessage, onTyping, onStatusUpdate,
         socket.on('typing', handleTyping);
         socket.on('status_update', handleStatusUpdate);
         socket.on('read_receipt', handleReadReceipt);
+        socket.on('connection_request', handleConnectionRequest);
+        socket.on('connection_accepted', handleConnectionAccepted);
+        socket.on('connection_rejected', handleConnectionRejected);
       } else if (!cancelled) {
         retryTimer = setTimeout(trySubscribe, 300);
       }
@@ -45,6 +70,9 @@ export default function useSocketListener({ onMessage, onTyping, onStatusUpdate,
         attachedSocket.off('typing', handleTyping);
         attachedSocket.off('status_update', handleStatusUpdate);
         attachedSocket.off('read_receipt', handleReadReceipt);
+        attachedSocket.off('connection_request', handleConnectionRequest);
+        attachedSocket.off('connection_accepted', handleConnectionAccepted);
+        attachedSocket.off('connection_rejected', handleConnectionRejected);
       }
     };
   }, []);

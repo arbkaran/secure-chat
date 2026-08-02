@@ -30,6 +30,8 @@ import {
   Check,
   UserCheck,
   UserPlus,
+  Camera,
+  PenSquare,
 } from 'lucide-react-native';
 
 export function ShieldIcon({ size = 24, color = '#2563EB' }) {
@@ -146,4 +148,12 @@ export function UserCheckIcon({ size = 18, color = '#22C55E' }) {
 
 export function UserPlusIcon({ size = 18, color = '#2563EB' }) {
   return <UserPlus size={size} color={color} />;
+}
+
+export function CameraIcon({ size = 20, color = '#08142E' }) {
+  return <Camera size={size} color={color} />;
+}
+
+export function ComposeIcon({ size = 20, color = '#08142E' }) {
+  return <PenSquare size={size} color={color} />;
 }

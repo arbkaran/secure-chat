@@ -19,3 +19,7 @@ class LoginSchema(BaseModel):
 
 class KeyUploadSchema(BaseModel):
     public_key: str
+
+
+class ConnectionRequestSchema(BaseModel):
+    receiver_id: int

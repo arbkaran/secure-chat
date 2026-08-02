@@ -1,4 +1,5 @@
 import { NavigationContainer, DarkTheme, DefaultTheme, getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
@@ -8,7 +9,7 @@ import OtpVerifyScreen from '../screens/OtpVerifyScreen';
 import ContactsScreen from '../screens/ContactsScreen';
 import ChatScreen from '../screens/ChatScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import { ChatBubbleIcon, GearIcon } from '../components/icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { useWindowDimensions, Platform } from 'react-native';
@@ -39,7 +40,7 @@ function ChatsStackNavigator() {
 
 function MainTabs() {
   const { colors } = useTheme();
-  const tabBarBase = { backgroundColor: colors.screen, borderTopColor: colors.border };
+  const tabBarBase = { backgroundColor: colors.tabBarBg, borderTopColor: colors.border };
 
   return (
     <Tabs.Navigator
@@ -56,7 +57,9 @@ function MainTabs() {
           const focusedRouteName = getFocusedRouteNameFromRoute(route) ?? 'ContactsList';
           return {
             tabBarStyle: { ...tabBarBase, display: focusedRouteName === 'Chat' ? 'none' : 'flex' },
-            tabBarIcon: ({ color, size, focused }) => <ChatBubbleIcon color={color} size={size} focused={focused} />,
+            tabBarIcon: ({ color, size, focused }) => (
+              <Ionicons name={focused ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline'} size={size} color={color} />
+            ),
           };
         }}
       />
@@ -65,7 +68,9 @@ function MainTabs() {
         component={SettingsScreen}
         options={{
           tabBarStyle: tabBarBase,
-          tabBarIcon: ({ color, size, focused }) => <GearIcon color={color} size={size} focused={focused} />,
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'settings' : 'settings-outline'} size={size} color={color} />
+          ),
         }}
       />
     </Tabs.Navigator>
@@ -92,7 +97,7 @@ export default function RootNavigator() {
   };
 
   return (
-    <NavigationContainer theme={navTheme}>
+    <NavigationContainer ref={navigationRef} theme={navTheme}>
       {isLoggedIn ? (isDesktop ? <DesktopDashboard /> : <MainTabs />) : <AuthStack />}
     </NavigationContainer>
   );

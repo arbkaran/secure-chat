@@ -2,7 +2,7 @@ import socketio
 
 from .auth import decode_token
 from .database import SessionLocal
-from .models import Message
+from .models import Connection, Message, User
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
 
@@ -38,7 +38,33 @@ async def _deliver_pending_messages(user_id: int, sid: str) -> None:
             .all()
         )
         for message in pending:
-            await sio.emit("message", _serialize_message(message), to=sid)
+            payload = _serialize_message(message)
+            payload["is_catchup"] = True
+            await sio.emit("message", payload, to=sid)
+    finally:
+        db.close()
+
+
+async def _deliver_pending_connection_requests(user_id: int, sid: str) -> None:
+    db = SessionLocal()
+    try:
+        pending = (
+            db.query(Connection)
+            .filter(Connection.receiver_id == user_id, Connection.status == "pending")
+            .all()
+        )
+        for conn in pending:
+            requester = db.query(User).filter(User.id == conn.requester_id).first()
+            if requester:
+                await sio.emit(
+                    "connection_request",
+                    {
+                        "connection_id": conn.id,
+                        "requester_id": conn.requester_id,
+                        "requester_name": requester.name,
+                    },
+                    to=sid,
+                )
     finally:
         db.close()
 
@@ -57,6 +83,7 @@ async def connect(sid, environ, auth):
     await sio.save_session(sid, {"user_id": user_id})
     online_sessions[user_id] = sid
     await _deliver_pending_messages(user_id, sid)
+    await _deliver_pending_connection_requests(user_id, sid)
     await _broadcast_status(user_id, "online")
 
 

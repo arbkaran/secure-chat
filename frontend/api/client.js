@@ -2,7 +2,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../config/env';
 import { getAccessToken, setSession, clearSession } from './authStorage';
 
-const client = axios.create({ baseURL: API_BASE_URL });
+const client = axios.create({ baseURL: API_BASE_URL, timeout: 15000 });
 
 client.interceptors.request.use(async (config) => {
   const token = await getAccessToken();
@@ -80,6 +80,36 @@ export async function searchUserByEmail(email) {
 
 export async function fetchMessages(contactId) {
   const { data } = await client.get(`/auth/messages/${contactId}`);
+  return data;
+}
+
+export async function fetchConnections() {
+  const { data } = await client.get('/connections/');
+  return data;
+}
+
+export async function fetchPendingRequests() {
+  const { data } = await client.get('/connections/pending');
+  return data;
+}
+
+export async function searchUsersToConnect(q) {
+  const { data } = await client.get('/connections/search', { params: { q } });
+  return data;
+}
+
+export async function sendConnectionRequest(receiverId) {
+  const { data } = await client.post('/connections/request', { receiver_id: receiverId });
+  return data;
+}
+
+export async function acceptConnection(connectionId) {
+  const { data } = await client.put(`/connections/${connectionId}/accept`);
+  return data;
+}
+
+export async function rejectConnection(connectionId) {
+  const { data } = await client.put(`/connections/${connectionId}/reject`);
   return data;
 }
 

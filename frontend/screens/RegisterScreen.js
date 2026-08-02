@@ -32,7 +32,7 @@ export default function RegisterScreen({ navigation }) {
       await setStoredCredentials(email, password);
       navigation.navigate('OtpVerify', { contact: email, email });
     } catch (e) {
-      setError(e?.response?.data?.detail ?? 'Registration failed');
+      setError(e?.response?.data?.detail ?? (e?.code === 'ECONNABORTED' ? 'Server timed out — is the backend running?' : 'Registration failed'));
     } finally {
       setLoading(false);
     }

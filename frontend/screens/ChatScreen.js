@@ -22,10 +22,12 @@ import * as MediaLibrary from 'expo-media-library';
 
 import ScreenContainer from '../components/ScreenContainer';
 import Avatar from '../components/Avatar';
-import { ChevronLeftIcon, MoreVerticalIcon, PaperclipIcon, SendIcon, DoubleCheckIcon } from '../components/icons';
+import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeftIcon, MoreVerticalIcon, PlusIcon, MicIcon, DoubleCheckIcon } from '../components/icons';
 import { useTheme } from '../theme';
 import { getSocket, connectSocket } from '../api/socket';
 import useSocketListener from '../hooks/useSocketListener';
+import { useActiveChat } from '../context/ActiveChatContext';
 import { uploadFile, downloadFile, fetchPublicKey, fetchMessages } from '../api/client';
 import { hybridEncrypt, hybridDecrypt } from '../crypto/hybrid';
 
@@ -33,6 +35,7 @@ export default function ChatScreen({ navigation, route }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const contact = route?.params?.contact ?? { name: 'User', initials: 'U', status: 'offline' };
+  const { setActiveChatId } = useActiveChat();
 
   const [draft, setDraft] = useState('');
   const [messages, setMessages] = useState([]);
@@ -40,11 +43,19 @@ export default function ChatScreen({ navigation, route }) {
   const [recipientPubKey, setRecipientPubKey] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
+  const [contactStatus, setContactStatus] = useState(contact.status ?? 'offline');
+  const [inputBarHeight, setInputBarHeight] = useState(80);
   const flatListRef = useRef(null);
 
   // Cache decrypted file URIs: fileId -> localUri
   const [decryptedFiles, setDecryptedFiles] = useState({});
   const [downloadingFiles, setDownloadingFiles] = useState({});
+
+  // Mark this chat as active so ContactsScreen suppresses notifications from this contact.
+  useEffect(() => {
+    setActiveChatId(String(contact.id));
+    return () => setActiveChatId(null);
+  }, [contact.id, setActiveChatId]);
 
   // Load RSA private key
   useEffect(() => {
@@ -62,9 +73,13 @@ export default function ChatScreen({ navigation, route }) {
     async function loadPubKey() {
       try {
         const key = await fetchPublicKey(contact.id);
-        setRecipientPubKey(key);
+        if (key) {
+          setRecipientPubKey(key);
+        } else {
+          setRecipientPubKey(null);
+        }
       } catch (e) {
-        console.error('Failed to load recipient public key', e);
+        setRecipientPubKey(null);
       }
     }
     loadPubKey();
@@ -140,6 +155,11 @@ export default function ChatScreen({ navigation, route }) {
 
   // Socket listener for real-time messaging
   useSocketListener({
+    onStatusUpdate: ({ user_id, status }) => {
+      if (String(user_id) === String(contact.id)) {
+        setContactStatus(status);
+      }
+    },
     onMessage: async (payload) => {
       if (String(payload.sender_id) === String(contact.id)) {
         try {
@@ -463,7 +483,7 @@ export default function ChatScreen({ navigation, route }) {
   };
 
   return (
-    <ScreenContainer>
+    <ScreenContainer style={{ backgroundColor: colors.screen }}>
       <View style={styles.header}>
         <Pressable onPress={() => navigation.goBack()} hitSlop={8}>
           <ChevronLeftIcon color={colors.textSecondary} />
@@ -471,7 +491,9 @@ export default function ChatScreen({ navigation, route }) {
         <Avatar initials={contact.initials} size={38} />
         <View style={styles.headerInfo}>
           <Text style={styles.headerName}>{contact.name}</Text>
-          <Text style={styles.headerStatus}>{contact.status === 'online' ? 'Online' : 'Offline'}</Text>
+          <Text style={[styles.headerStatus, contactStatus !== 'online' && styles.headerStatusOffline]}>
+            {contactStatus === 'online' ? 'Online' : 'Offline'}
+          </Text>
         </View>
         <Pressable onPress={handleMorePress} hitSlop={8}>
           <MoreVerticalIcon color={colors.textSecondary} />
@@ -493,7 +515,8 @@ export default function ChatScreen({ navigation, route }) {
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.messageList}
+          style={styles.messageListOuter}
+          contentContainerStyle={[styles.messageList, { paddingBottom: inputBarHeight + 16 }]}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) => {
             const isOutgoing = item.type === 'outgoing';
@@ -553,11 +576,15 @@ export default function ChatScreen({ navigation, route }) {
             <Text style={styles.uploadingText}>Encrypting &amp; uploading file…</Text>
           </View>
         )}
+      </KeyboardAvoidingView>
 
+      {/* Floating input */}
+      <View style={styles.inputBar} onLayout={(e) => setInputBarHeight(e.nativeEvent.layout.height)}>
         <View style={styles.inputRow}>
           <Pressable style={styles.attachButton} onPress={handleAttachPress} hitSlop={8}>
-            <PaperclipIcon color={colors.textSecondary} />
+            <PlusIcon size={22} color={colors.textPrimary} />
           </Pressable>
+
           <View style={styles.inputPill}>
             <TextInput
               value={draft}
@@ -566,20 +593,26 @@ export default function ChatScreen({ navigation, route }) {
               placeholderTextColor={colors.textTertiary}
               style={styles.input}
               multiline
+              scrollEnabled
+              textAlignVertical="center"
             />
+            {!draft && (
+              <MicIcon size={20} color={colors.textTertiary} />
+            )}
           </View>
+
           <Pressable style={styles.sendButton} onPress={() => handleSend()} hitSlop={8}>
-            <SendIcon color={colors.onAccent} />
+            <Ionicons name="send" size={18} color={colors.onAccent} />
           </Pressable>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </ScreenContainer>
   );
 }
 
 function createStyles(colors) {
   return StyleSheet.create({
-    flex: { flex: 1 },
+    flex: { flex: 1, backgroundColor: colors.screen },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -603,10 +636,18 @@ function createStyles(colors) {
       fontSize: 12,
       fontFamily: 'Inter_400Regular',
     },
+    headerStatusOffline: {
+      color: colors.textTertiary,
+    },
+    messageListOuter: {
+      flex: 1,
+      backgroundColor: colors.screen,
+    },
     messageList: {
       gap: 14,
       padding: 16,
-      backgroundColor: colors.surfaceAlt,
+      flexGrow: 1,
+      backgroundColor: colors.screen,
     },
     bubbleWrap: {
       alignSelf: 'flex-start',
@@ -672,7 +713,7 @@ function createStyles(colors) {
       resizeMode: 'cover',
     },
     fileActionButton: {
-      backgroundColor: colors.surfaceAlt,
+      backgroundColor: colors.screen,
       paddingVertical: 8,
       paddingHorizontal: 12,
       borderRadius: 8,
@@ -711,7 +752,7 @@ function createStyles(colors) {
       fontStyle: 'italic',
       paddingHorizontal: 20,
       paddingBottom: 8,
-      backgroundColor: colors.surfaceAlt,
+      backgroundColor: colors.screen,
     },
     uploadingLoader: {
       flexDirection: 'row',
@@ -719,56 +760,70 @@ function createStyles(colors) {
       gap: 8,
       paddingHorizontal: 20,
       paddingBottom: 8,
-      backgroundColor: colors.surfaceAlt,
+      backgroundColor: colors.screen,
     },
     uploadingText: {
       color: colors.textSecondary,
       fontSize: 13,
       fontFamily: 'Inter_400Regular',
     },
+    inputBar: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: colors.screen,
+      paddingHorizontal: 10,
+      paddingTop: 6,
+      paddingBottom: 16,
+    },
     inputRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
-      paddingHorizontal: 16,
-      paddingTop: 10,
-      paddingBottom: 24,
-      backgroundColor: colors.screen,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      gap: 6,
     },
     attachButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 12,
-      backgroundColor: colors.surfaceAlt,
+      width: 36,
+      height: 44,
       alignItems: 'center',
       justifyContent: 'center',
     },
     inputPill: {
       flex: 1,
-      minHeight: 40,
-      borderRadius: 20,
-      backgroundColor: colors.surfaceAlt,
-      justifyContent: 'center',
+      minHeight: 44,
+      maxHeight: 120,
+      borderRadius: 24,
+      backgroundColor: colors.chatInputBg,
+      flexDirection: 'row',
+      alignItems: 'center',
       paddingHorizontal: 16,
-      borderWidth: 1,
-      borderColor: colors.border,
+      gap: 10,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 3,
     },
     input: {
+      flex: 1,
       color: colors.textPrimary,
-      fontSize: 14.5,
+      fontSize: 15,
       fontFamily: 'Inter_400Regular',
-      paddingVertical: Platform.OS === 'ios' ? 8 : 4,
+      paddingVertical: 11,
       maxHeight: 100,
     },
     sendButton: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 44,
+      height: 44,
+      borderRadius: 22,
       backgroundColor: colors.accent,
       alignItems: 'center',
       justifyContent: 'center',
+      shadowColor: colors.accent,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.35,
+      shadowRadius: 6,
+      elevation: 4,
     },
     historyLoader: {
       flexDirection: 'row',
@@ -776,7 +831,7 @@ function createStyles(colors) {
       justifyContent: 'center',
       gap: 8,
       paddingVertical: 12,
-      backgroundColor: colors.surfaceAlt,
+      backgroundColor: colors.screen,
     },
     historyLoaderText: {
       color: colors.textSecondary,

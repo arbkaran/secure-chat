@@ -80,3 +80,15 @@ class LoginLog(Base):
     success = Column(Boolean, nullable=False)
     ip_address = Column(String(64), nullable=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class Connection(Base):
+    __tablename__ = "connections"
+
+    id = Column(Integer, primary_key=True)
+    requester_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    receiver_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    # status: pending | accepted | rejected
+    status = Column(String(20), default="pending", nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)

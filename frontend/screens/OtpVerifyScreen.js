@@ -4,11 +4,16 @@ import ScreenContainer from '../components/ScreenContainer';
 import Button from '../components/Button';
 import { MailIcon } from '../components/icons';
 import { useTheme } from '../theme';
-import { verifyOtp as apiVerifyOtp } from '../api/client';
+import { verifyOtp as apiVerifyOtp, login as apiLogin, uploadPublicKey } from '../api/client';
+import { useAuth } from '../context/AuthContext';
+import { getStoredEmail, getStoredPassword } from '../api/authStorage';
+import { ensureKeypair } from '../crypto/keys';
+import { connectSocket } from '../api/socket';
 
 const CODE_LENGTH = 6;
 
 export default function OtpVerifyScreen({ route, navigation }) {
+  const { login } = useAuth();
   const { colors, spacing } = useTheme();
   const styles = useMemo(() => createStyles(colors, spacing), [colors, spacing]);
   const contact = route?.params?.contact ?? '+1 (415) 555-0148';
@@ -25,7 +30,18 @@ export default function OtpVerifyScreen({ route, navigation }) {
     setLoading(true);
     try {
       await apiVerifyOtp({ email, code: otpCode });
-      navigation.navigate('Login');
+      // Auto-login with stored credentials so user goes straight into the app.
+      const storedEmail = await getStoredEmail();
+      const storedPassword = await getStoredPassword();
+      if (storedEmail && storedPassword) {
+        const { user_id } = await apiLogin({ email: storedEmail, password: storedPassword });
+        const publicKey = await ensureKeypair();
+        await uploadPublicKey(publicKey);
+        await connectSocket();
+        login(user_id);
+      } else {
+        navigation.navigate('Login');
+      }
     } catch (e) {
       setError(e?.response?.data?.detail ?? 'Invalid or expired code');
     } finally {

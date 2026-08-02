@@ -24,7 +24,7 @@ def send_otp_email(to_email: str, code: str) -> None:
             f"Your verification code is {code}. It expires in 10 minutes."
         )
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as server:
             server.starttls()
             server.login(SMTP_USER, SMTP_PASSWORD)
             server.send_message(message)

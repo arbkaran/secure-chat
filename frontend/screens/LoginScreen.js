@@ -33,7 +33,7 @@ export default function LoginScreen({ navigation }) {
       await connectSocket();
       login(user_id);
     } catch (e) {
-      setError(e?.response?.data?.detail ?? 'Invalid email or password');
+      setError(e?.response?.data?.detail ?? (e?.code === 'ECONNABORTED' ? 'Server timed out — is the backend running?' : 'Invalid email or password'));
     } finally {
       setLoading(false);
     }

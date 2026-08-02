@@ -13,30 +13,30 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0B0F13",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#F2F6FF"
+      },
+      "notification": {
+        "icon": "./assets/icon.png",
+        "color": "#1258B4"
       }
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/icon.png"
     },
     "plugins": [
       "expo-font",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#FFFFFF",
+          "backgroundColor": "#1258B4",
           "image": "./assets/splash-icon.png",
           "imageWidth": 160,
-          "dark": {
-            "backgroundColor": "#10151B",
-            "image": "./assets/splash-icon.png"
-          }
+          "resizeMode": "contain"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-notifications"
     ]
   }
 }

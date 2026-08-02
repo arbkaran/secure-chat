@@ -32,5 +32,5 @@ def fetch_key(
 ):
     record = db.query(PublicKey).filter(PublicKey.user_id == user_id).first()
     if not record:
-        raise HTTPException(404, "Public key not found")
+        return {"rsa_public_key": None, "public_key": None}
     return {"rsa_public_key": record.rsa_public_key, "public_key": record.rsa_public_key}
