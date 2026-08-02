@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { useToast } from '../context/ToastContext';
+import * as Crypto from 'expo-crypto';
 
 export default function SettingsScreen() {
   const { logout } = useAuth();
@@ -23,6 +24,7 @@ export default function SettingsScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [profilePictureUri, setProfilePictureUri] = useState(null);
+  const [fingerprint, setFingerprint] = useState('Generating...');
 
   useEffect(() => {
     async function loadProfile() {
@@ -45,6 +47,23 @@ export default function SettingsScreen() {
 
       const avatar = await SecureStore.getItemAsync('profile_picture_uri');
       if (avatar) setProfilePictureUri(avatar);
+
+      const pubKey = await SecureStore.getItemAsync('rsa_public_key');
+      if (pubKey) {
+        try {
+          const digest = await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            pubKey
+          );
+          const clean = digest.toUpperCase();
+          const formatted = `${clean.slice(0, 4)} · ${clean.slice(4, 8)} · ${clean.slice(8, 12)} · ${clean.slice(12, 16)}`;
+          setFingerprint(formatted);
+        } catch (hashErr) {
+          setFingerprint('Error Generating');
+        }
+      } else {
+        setFingerprint('No Key Registered');
+      }
     }
     loadLocalSettings();
   }, []);
@@ -93,10 +112,11 @@ export default function SettingsScreen() {
     if (!profile.name) return '??';
     return profile.name
       .split(' ')
+      .filter(Boolean)
       .map((n) => n[0])
       .join('')
       .toUpperCase()
-      .slice(0, 2);
+      .slice(0, 2) || '??';
   }, [profile.name]);
 
   return (
@@ -172,7 +192,7 @@ export default function SettingsScreen() {
             <View style={styles.fingerprintRow}>
               <View>
                 <Text style={styles.fingerprintLabel}>Your key fingerprint</Text>
-                <Text style={styles.fingerprintValue}>4A2F · 9C1E · 88B0 · D3F7</Text>
+                <Text style={styles.fingerprintValue}>{fingerprint}</Text>
               </View>
               <Text style={styles.verifyLink}>Verify</Text>
             </View>

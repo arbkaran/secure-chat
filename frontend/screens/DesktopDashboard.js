@@ -140,12 +140,13 @@ export default function DesktopDashboard() {
         id: String(u.id),
         name: u.name,
         email: u.email,
-        initials: u.name
+        initials: (u.name || '')
           .split(' ')
+          .filter(Boolean)
           .map((n) => n[0])
           .join('')
           .toUpperCase()
-          .slice(0, 2),
+          .slice(0, 2) || '?',
         status: u.status || 'offline',
         lastMessage: 'Start a secure chat',
         time: '',
@@ -623,12 +624,13 @@ export default function DesktopDashboard() {
       id: String(user.id),
       name: user.name,
       email: user.email,
-      initials: user.name
+      initials: (user.name || '')
         .split(' ')
+        .filter(Boolean)
         .map((n) => n[0])
         .join('')
         .toUpperCase()
-        .slice(0, 2),
+        .slice(0, 2) || '?',
       status: user.status || 'offline',
       lastMessage: 'Start a secure chat',
       time: '',
@@ -692,7 +694,7 @@ export default function DesktopDashboard() {
         <View style={styles.profileHeader}>
           <Pressable onPress={handlePickProfilePicture} style={styles.profileAvatarContainer}>
             <Avatar
-              initials={currentUser.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)}
+              initials={(currentUser.name || '').split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?'}
               status="online"
               size={42}
               imageUri={profilePictureUri}
@@ -730,7 +732,7 @@ export default function DesktopDashboard() {
           {searchError ? <Text style={styles.errorText}>{searchError}</Text> : null}
           {searchResults.map((user) => (
             <View key={user.id} style={styles.searchResultCard}>
-              <Avatar initials={user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)} status="offline" size={32} />
+              <Avatar initials={(user.name || '').split(' ').filter(Boolean).map((n) => n[0]).join('').toUpperCase().slice(0, 2) || '?'} status="offline" size={32} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.resultName}>{user.name}</Text>
                 <Text style={styles.resultEmail}>{user.email}</Text>

@@ -22,12 +22,24 @@ import * as MediaLibrary from 'expo-media-library';
 
 import ScreenContainer from '../components/ScreenContainer';
 import Avatar from '../components/Avatar';
-import { ChevronLeftIcon, MoreVerticalIcon, PaperclipIcon, SendIcon, DoubleCheckIcon } from '../components/icons';
+import {
+  ChevronLeftIcon,
+  MoreVerticalIcon,
+  PaperclipIcon,
+  SendIcon,
+  DoubleCheckIcon,
+  CameraIcon,
+  MicIcon,
+  PlayIcon,
+  PauseIcon,
+  StopIcon,
+} from '../components/icons';
 import { useTheme } from '../theme';
 import { getSocket, connectSocket } from '../api/socket';
 import useSocketListener from '../hooks/useSocketListener';
 import { uploadFile, downloadFile, fetchPublicKey, fetchMessages } from '../api/client';
 import { hybridEncrypt, hybridDecrypt } from '../crypto/hybrid';
+import { Audio } from 'expo-av';
 
 export default function ChatScreen({ navigation, route }) {
   const { colors } = useTheme();
@@ -40,6 +52,11 @@ export default function ChatScreen({ navigation, route }) {
   const [recipientPubKey, setRecipientPubKey] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [fileUploading, setFileUploading] = useState(false);
+  const [recording, setRecording] = useState(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [playingAudioId, setPlayingAudioId] = useState(null);
+  const soundRef = useRef(null);
   const flatListRef = useRef(null);
 
   // Cache decrypted file URIs: fileId -> localUri
@@ -56,6 +73,33 @@ export default function ChatScreen({ navigation, route }) {
     }
     loadKey();
   }, []);
+
+  // Recording timer effect
+  useEffect(() => {
+    let interval;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setRecordingDuration(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording]);
+
+  // Clean up recording object on unmount
+  useEffect(() => {
+    return () => {
+      if (recording) {
+        recording.stopAndUnloadAsync().catch(() => {});
+      }
+      if (soundRef.current) {
+        soundRef.current.unloadAsync().catch(() => {});
+      }
+    };
+  }, [recording]);
 
   // Load recipient's public key
   useEffect(() => {
@@ -74,12 +118,15 @@ export default function ChatScreen({ navigation, route }) {
 
   // Load message history once keys are ready
   useEffect(() => {
-    if (!privateKey || !recipientPubKey) return;
+    if (!privateKey) return;
 
     async function loadHistory() {
       setLoadingHistory(true);
       try {
-        const clearedAt = await SecureStore.getItemAsync('cleared_at_' + contact.id);
+        const currentUserId = await SecureStore.getItemAsync('user_id');
+        const clearedRaw = await SecureStore.getItemAsync('cleared_chats_map');
+        const clearedMap = clearedRaw ? JSON.parse(clearedRaw) : {};
+        const clearedAt = clearedMap[`${currentUserId}_${contact.id}`];
         const history = await fetchMessages(contact.id);
         const decryptedHistory = [];
 
@@ -110,7 +157,7 @@ export default function ChatScreen({ navigation, route }) {
 
             decryptedHistory.push(parsedMsg);
           } catch (decryptionError) {
-            console.error('Decryption error for history item:', decryptionError);
+            console.warn('Decryption error for history item:', decryptionError.message);
             const utcTime = msg.timestamp.endsWith('Z') ? msg.timestamp : msg.timestamp + 'Z';
             decryptedHistory.push({
               id: String(msg.message_id),
@@ -136,7 +183,7 @@ export default function ChatScreen({ navigation, route }) {
       }
     }
     loadHistory();
-  }, [privateKey, recipientPubKey, contact.id]);
+  }, [privateKey, contact.id]);
 
   // Socket listener for real-time messaging
   useSocketListener({
@@ -191,7 +238,17 @@ export default function ChatScreen({ navigation, route }) {
     const trimmed = textToSend.trim();
     if (!trimmed) return;
 
-    if (!recipientPubKey) {
+    let activePubKey = recipientPubKey;
+    if (!activePubKey) {
+      try {
+        activePubKey = await fetchPublicKey(contact.id);
+        setRecipientPubKey(activePubKey);
+      } catch (e) {
+        // Still not found or error fetching
+      }
+    }
+
+    if (!activePubKey) {
       Alert.alert(
         'Cannot Send Message',
         'This contact has not set up their encryption keys yet. They must log in to the app at least once to generate them.'
@@ -205,7 +262,7 @@ export default function ChatScreen({ navigation, route }) {
 
     try {
       // 1. Encrypt message using hybrid encryption
-      const encrypted = hybridEncrypt(trimmed, recipientPubKey);
+      const encrypted = hybridEncrypt(trimmed, activePubKey);
 
       // 2. Emit over socket
       const socket = getSocket();
@@ -259,7 +316,8 @@ export default function ChatScreen({ navigation, route }) {
       'Send Attachment',
       'Select the type of attachment to send:',
       [
-        { text: 'Photo / Image', onPress: sendPhotoAttachment },
+        { text: 'Take Photo (Camera)', onPress: takePhotoAttachment },
+        { text: 'Photo Library', onPress: sendPhotoAttachment },
         { text: 'Document (PDF, Word, Excel...)', onPress: sendDocumentAttachment },
         { text: 'Cancel', style: 'cancel' },
       ]
@@ -295,7 +353,7 @@ export default function ChatScreen({ navigation, route }) {
       const encryptedFile = hybridEncrypt(fileBytes, recipientPubKey);
 
       // 3. Write encrypted data to a temporary file locally so we can upload it
-      const tempPath = `${FileSystem.cacheDirectory}${cleanFilename}.enc`;
+      const tempPath = `${FileSystem.cacheDirectory}temp_upload_${Date.now()}.enc`;
       await FileSystem.writeAsStringAsync(tempPath, encryptedFile.ciphertext, {
         encoding: 'base64',
       });
@@ -350,6 +408,145 @@ export default function ChatScreen({ navigation, route }) {
     }
   };
 
+  const takePhotoAttachment = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Permission Denied', 'Camera access is required.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: false,
+      quality: 0.8,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      const asset = result.assets[0];
+      const filename = asset.fileName || `camera_${Date.now()}.png`;
+      await processAndUploadFile(asset.uri, filename, 'image/png');
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Permission Denied', 'Microphone access is required to record audio.');
+        return;
+      }
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      const { recording: newRecording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      );
+      setRecording(newRecording);
+      setIsRecording(true);
+    } catch (err) {
+      console.error('Failed to start recording', err);
+      Alert.alert('Error', 'Failed to start voice recording.');
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recording) return;
+    setIsRecording(false);
+    try {
+      await recording.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      });
+      const uri = recording.getURI();
+      setRecording(null);
+
+      if (uri) {
+        const filename = `voice_note_${Date.now()}.m4a`;
+        await processAndUploadFile(uri, filename, 'audio/m4a');
+      }
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+      Alert.alert('Error', 'Failed to save voice recording.');
+    }
+  };
+
+  const handlePlayPauseAudio = async (fileId, filename) => {
+    if (playingAudioId === fileId) {
+      if (soundRef.current) {
+        await soundRef.current.pauseAsync();
+        setPlayingAudioId(null);
+      }
+      return;
+    }
+
+    if (soundRef.current) {
+      try {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+      } catch (err) {
+        console.warn('Unloading previous sound failed', err);
+      }
+      soundRef.current = null;
+      setPlayingAudioId(null);
+    }
+
+    let filePath = decryptedFiles[fileId];
+
+    if (!filePath) {
+      const cleanFilename = decodeURIComponent(filename);
+      const sanitizedFilename = cleanFilename.replace(/\s+/g, '_');
+      setDownloadingFiles((prev) => ({ ...prev, [fileId]: true }));
+      try {
+        const encryptedFileData = await downloadFile(fileId);
+        const decryptedBase64 = await hybridDecrypt(encryptedFileData, privateKey);
+        filePath = `${FileSystem.documentDirectory}${sanitizedFilename}`;
+        await FileSystem.writeAsStringAsync(filePath, decryptedBase64, {
+          encoding: 'base64',
+        });
+        setDecryptedFiles((prev) => ({ ...prev, [fileId]: filePath }));
+      } catch (e) {
+        console.error('File download/decryption failed for playback', e);
+        Alert.alert('Download Error', 'Could not decrypt and play this voice note.');
+        setDownloadingFiles((prev) => ({ ...prev, [fileId]: false }));
+        return;
+      } finally {
+        setDownloadingFiles((prev) => ({ ...prev, [fileId]: false }));
+      }
+    }
+
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: filePath },
+        { shouldPlay: true },
+        async (status) => {
+          if (status.didJustFinish) {
+            setPlayingAudioId(null);
+            if (soundRef.current) {
+              await soundRef.current.unloadAsync();
+              soundRef.current = null;
+            }
+          }
+        }
+      );
+
+      soundRef.current = sound;
+      setPlayingAudioId(fileId);
+    } catch (err) {
+      console.error('Failed to play audio', err);
+      Alert.alert('Playback Error', 'Failed to play audio file.');
+    }
+  };
+
+
+
   const sendDocumentAttachment = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -369,6 +566,7 @@ export default function ChatScreen({ navigation, route }) {
   // Download and Decrypt File
   const handleDownloadFile = async (fileId, filename) => {
     const cleanFilename = decodeURIComponent(filename);
+    const sanitizedFilename = cleanFilename.replace(/\s+/g, '_');
     if (decryptedFiles[fileId]) {
       // Already downloaded, let's open it
       await Sharing.shareAsync(decryptedFiles[fileId]);
@@ -384,7 +582,7 @@ export default function ChatScreen({ navigation, route }) {
       const decryptedBase64 = await hybridDecrypt(encryptedFileData, privateKey);
 
       // 3. Save decrypted file to local storage
-      const localPath = `${FileSystem.documentDirectory}${cleanFilename}`;
+      const localPath = `${FileSystem.documentDirectory}${sanitizedFilename}`;
       await FileSystem.writeAsStringAsync(localPath, decryptedBase64, {
         encoding: 'base64',
       });
@@ -454,7 +652,11 @@ export default function ChatScreen({ navigation, route }) {
   const confirmEraseConversation = async () => {
     try {
       const now = new Date().toISOString();
-      await SecureStore.setItemAsync('cleared_at_' + contact.id, now);
+      const currentUserId = await SecureStore.getItemAsync('user_id');
+      const clearedRaw = await SecureStore.getItemAsync('cleared_chats_map');
+      const clearedMap = clearedRaw ? JSON.parse(clearedRaw) : {};
+      clearedMap[`${currentUserId}_${contact.id}`] = now;
+      await SecureStore.setItemAsync('cleared_chats_map', JSON.stringify(clearedMap));
       setMessages([]);
       Alert.alert('Erased', 'The conversation has been erased completely.');
     } catch (e) {
@@ -498,35 +700,64 @@ export default function ChatScreen({ navigation, route }) {
           renderItem={({ item }) => {
             const isOutgoing = item.type === 'outgoing';
             const hasFile = !!item.fileData;
+            const isAudioFile = hasFile && (item.fileData.mimeType?.startsWith('audio/') || item.fileData.filename?.endsWith('.m4a'));
 
             return (
               <View style={[styles.bubbleWrap, isOutgoing && styles.bubbleWrapOutgoing]}>
                 <View style={[styles.bubble, isOutgoing ? styles.bubbleOutgoing : styles.bubbleIncoming]}>
                   {hasFile ? (
-                    <View style={styles.fileContainer}>
-                      <Text style={[styles.fileTitle, isOutgoing && styles.fileTitleOutgoing]}>
-                        📎 {item.fileData.filename}
-                      </Text>
-                      {isImage(item.fileData.filename) && decryptedFiles[item.fileData.file_id] ? (
-                        <Image
-                          source={{ uri: decryptedFiles[item.fileData.file_id] }}
-                          style={styles.imagePreview}
-                        />
-                      ) : null}
-                      <Pressable
-                        style={[styles.fileActionButton, isOutgoing && styles.fileActionButtonOutgoing]}
-                        onPress={() => handleDownloadFile(item.fileData.file_id, item.fileData.filename)}
-                        disabled={downloadingFiles[item.fileData.file_id]}
-                      >
-                        {downloadingFiles[item.fileData.file_id] ? (
-                          <ActivityIndicator size="small" color={isOutgoing ? colors.accent : colors.textPrimary} />
-                        ) : (
-                          <Text style={[styles.fileActionText, isOutgoing && styles.fileActionTextOutgoing]}>
-                            {decryptedFiles[item.fileData.file_id] ? 'Open / Share' : 'Download & Decrypt'}
+                    isAudioFile ? (
+                      <View style={styles.audioContainer}>
+                        <Pressable
+                          style={[styles.audioPlayButton, isOutgoing && styles.audioPlayButtonOutgoing]}
+                          onPress={() => handlePlayPauseAudio(item.fileData.file_id, item.fileData.filename)}
+                          disabled={downloadingFiles[item.fileData.file_id]}
+                        >
+                          {downloadingFiles[item.fileData.file_id] ? (
+                            <ActivityIndicator size="small" color={isOutgoing ? '#FFFFFF' : colors.accent} />
+                          ) : (
+                            playingAudioId === item.fileData.file_id ? (
+                              <PauseIcon size={16} color={isOutgoing ? colors.accent : colors.textPrimary} />
+                            ) : (
+                              <PlayIcon size={16} color={isOutgoing ? colors.accent : colors.textPrimary} />
+                            )
+                          )}
+                        </Pressable>
+                        <View style={styles.audioInfo}>
+                          <Text style={[styles.audioTitle, isOutgoing && styles.audioTitleOutgoing]}>
+                            Voice Note
                           </Text>
-                        )}
-                      </Pressable>
-                    </View>
+                          <Text style={[styles.audioSubtitle, isOutgoing && styles.audioSubtitleOutgoing]}>
+                            {playingAudioId === item.fileData.file_id ? 'Playing…' : 'Tap to listen'}
+                          </Text>
+                        </View>
+                      </View>
+                    ) : (
+                      <View style={styles.fileContainer}>
+                        <Text style={[styles.fileTitle, isOutgoing && styles.fileTitleOutgoing]}>
+                          📎 {item.fileData.filename}
+                        </Text>
+                        {isImage(item.fileData.filename) && decryptedFiles[item.fileData.file_id] ? (
+                          <Image
+                            source={{ uri: decryptedFiles[item.fileData.file_id] }}
+                            style={styles.imagePreview}
+                          />
+                        ) : null}
+                        <Pressable
+                          style={[styles.fileActionButton, isOutgoing && styles.fileActionButtonOutgoing]}
+                          onPress={() => handleDownloadFile(item.fileData.file_id, item.fileData.filename)}
+                          disabled={downloadingFiles[item.fileData.file_id]}
+                        >
+                          {downloadingFiles[item.fileData.file_id] ? (
+                            <ActivityIndicator size="small" color={isOutgoing ? colors.accent : colors.textPrimary} />
+                          ) : (
+                            <Text style={[styles.fileActionText, isOutgoing && styles.fileActionTextOutgoing]}>
+                              {decryptedFiles[item.fileData.file_id] ? 'Open / Share' : 'Download & Decrypt'}
+                            </Text>
+                          )}
+                        </Pressable>
+                      </View>
+                    )
                   ) : (
                     <Text 
                       style={[styles.bubbleText, isOutgoing && styles.bubbleTextOutgoing, isUrl(item.text) && styles.linkText]}
@@ -545,7 +776,7 @@ export default function ChatScreen({ navigation, route }) {
           }}
         />
 
-        {isTyping && <Text style={styles.typing}>{contact.name.split(' ')[0]} is typing…</Text>}
+        {isTyping && <Text style={styles.typing}>{(contact.name || '').split(' ')[0] || 'Someone'} is typing…</Text>}
 
         {fileUploading && (
           <View style={styles.uploadingLoader}>
@@ -558,19 +789,53 @@ export default function ChatScreen({ navigation, route }) {
           <Pressable style={styles.attachButton} onPress={handleAttachPress} hitSlop={8}>
             <PaperclipIcon color={colors.textSecondary} />
           </Pressable>
-          <View style={styles.inputPill}>
-            <TextInput
-              value={draft}
-              onChangeText={handleTypingInput}
-              placeholder="Message"
-              placeholderTextColor={colors.textTertiary}
-              style={styles.input}
-              multiline
-            />
-          </View>
-          <Pressable style={styles.sendButton} onPress={() => handleSend()} hitSlop={8}>
-            <SendIcon color={colors.onAccent} />
-          </Pressable>
+          
+          {isRecording ? (
+            <View style={styles.recordingContainer}>
+              <View style={styles.recordingIndicator}>
+                <View style={styles.recordingDot} />
+                <Text style={styles.recordingText}>
+                  Recording ({Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')})
+                </Text>
+              </View>
+              <Pressable style={styles.cancelRecordingButton} onPress={() => {
+                setIsRecording(false);
+                if (recording) {
+                  recording.stopAndUnloadAsync().catch(() => {});
+                  setRecording(null);
+                }
+              }}>
+                <Text style={styles.cancelRecordingText}>Cancel</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.inputPill}>
+              <TextInput
+                value={draft}
+                onChangeText={handleTypingInput}
+                placeholder="Message"
+                placeholderTextColor={colors.textTertiary}
+                style={styles.input}
+                multiline
+              />
+            </View>
+          )}
+
+          {isRecording ? (
+            <Pressable style={[styles.sendButton, { backgroundColor: colors.destructive }]} onPress={stopRecording} hitSlop={8}>
+              <StopIcon color="#FFFFFF" size={16} />
+            </Pressable>
+          ) : (
+            draft.trim() ? (
+              <Pressable style={styles.sendButton} onPress={() => handleSend()} hitSlop={8}>
+                <SendIcon color={colors.onAccent} />
+              </Pressable>
+            ) : (
+              <Pressable style={styles.attachButton} onPress={startRecording} hitSlop={8}>
+                <MicIcon color={colors.textSecondary} size={20} />
+              </Pressable>
+            )
+          )}
         </View>
       </KeyboardAvoidingView>
     </ScreenContainer>
@@ -783,5 +1048,82 @@ function createStyles(colors) {
       fontSize: 13,
       fontFamily: 'Inter_400Regular',
     },
+    audioContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      minWidth: 180,
+      paddingVertical: 4,
+    },
+    audioPlayButton: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.surfaceAlt,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    audioPlayButtonOutgoing: {
+      backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    },
+    audioInfo: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    audioTitle: {
+      color: colors.textPrimary,
+      fontSize: 14,
+      fontFamily: 'Inter_600SemiBold',
+    },
+    audioTitleOutgoing: {
+      color: '#FFFFFF',
+    },
+    audioSubtitle: {
+      color: colors.textSecondary,
+      fontSize: 12,
+      fontFamily: 'Inter_400Regular',
+      marginTop: 2,
+    },
+    audioSubtitleOutgoing: {
+      color: 'rgba(255, 255, 255, 0.7)',
+    },
+    recordingContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surfaceAlt,
+      height: 40,
+      borderRadius: 20,
+      paddingHorizontal: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    recordingIndicator: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    recordingDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: '#EF4444',
+    },
+    recordingText: {
+      color: colors.textPrimary,
+      fontSize: 14,
+      fontFamily: 'Inter_500Medium',
+    },
+    cancelRecordingButton: {
+      paddingVertical: 4,
+      paddingHorizontal: 8,
+    },
+    cancelRecordingText: {
+      color: colors.destructive,
+      fontSize: 14,
+      fontFamily: 'Inter_600SemiBold',
+    },
   });
 }
+

@@ -30,6 +30,10 @@ import {
   Check,
   UserCheck,
   UserPlus,
+  Camera,
+  Play,
+  Pause,
+  Square,
 } from 'lucide-react-native';
 
 export function ShieldIcon({ size = 24, color = '#2563EB' }) {
@@ -146,4 +150,20 @@ export function UserCheckIcon({ size = 18, color = '#22C55E' }) {
 
 export function UserPlusIcon({ size = 18, color = '#2563EB' }) {
   return <UserPlus size={size} color={color} />;
+}
+
+export function CameraIcon({ size = 20, color = '#64748B' }) {
+  return <Camera size={size} color={color} />;
+}
+
+export function PlayIcon({ size = 16, color = '#64748B' }) {
+  return <Play size={size} color={color} fill={color} />;
+}
+
+export function PauseIcon({ size = 16, color = '#64748B' }) {
+  return <Pause size={size} color={color} fill={color} />;
+}
+
+export function StopIcon({ size = 16, color = '#64748B' }) {
+  return <Square size={size} color={color} fill={color} />;
 }

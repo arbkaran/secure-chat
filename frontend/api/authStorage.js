@@ -39,5 +39,6 @@ export async function clearSession() {
   await SecureStore.deleteItemAsync(USER_ID_KEY);
   await SecureStore.deleteItemAsync(EMAIL_KEY);
   await SecureStore.deleteItemAsync(PASSWORD_KEY);
+  await SecureStore.deleteItemAsync('cleared_chats_map');
 }
 

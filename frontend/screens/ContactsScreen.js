@@ -46,12 +46,13 @@ export default function ContactsScreen({ navigation }) {
         const formatted = users.map((u) => ({
           id: String(u.id),
           name: u.name,
-          initials: u.name
+          initials: (u.name || '')
             .split(' ')
+            .filter(Boolean)
             .map((n) => n[0])
             .join('')
             .toUpperCase()
-            .slice(0, 2),
+            .slice(0, 2) || '?',
           status: u.status || 'offline',
           lastMessage: 'Start a new conversation',
           time: '',
@@ -91,7 +92,7 @@ export default function ContactsScreen({ navigation }) {
 
         showToast(`New message from ${senderName}: ${preview}`, 'success');
       } catch (err) {
-        console.error('Failed to decrypt in-app toast message', err);
+        console.warn('Failed to decrypt in-app toast message:', err.message);
       }
     }
   });
@@ -146,12 +147,13 @@ export default function ContactsScreen({ navigation }) {
       const newContact = {
         id: String(user.id),
         name: user.name,
-        initials: user.name
+        initials: (user.name || '')
           .split(' ')
+          .filter(Boolean)
           .map((n) => n[0])
           .join('')
           .toUpperCase()
-          .slice(0, 2),
+          .slice(0, 2) || '?',
         status: user.status || 'offline',
         lastMessage: 'Start a new conversation',
         time: '',
