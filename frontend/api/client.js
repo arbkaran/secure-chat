@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { Platform } from 'react-native';
 import { API_BASE_URL } from '../config/env';
 import { getAccessToken, setSession, clearSession } from './authStorage';
 
@@ -50,9 +51,23 @@ export async function uploadFile({ receiverId, encryptedAesKey, iv, tag, fileUri
   form.append('encrypted_aes_key', encryptedAesKey);
   form.append('iv', iv);
   form.append('tag', tag);
-  form.append('file', { uri: fileUri, name: fileName, type: 'application/octet-stream' });
 
-  const { data } = await client.post('/files/upload', form);
+  if (Platform.OS === 'web') {
+    let blob;
+    if (typeof fileUri === 'string' && (fileUri.startsWith('data:') || fileUri.startsWith('blob:'))) {
+      const res = await fetch(fileUri);
+      blob = await res.blob();
+    } else {
+      blob = fileUri;
+    }
+    form.append('file', blob, fileName);
+  } else {
+    form.append('file', { uri: fileUri, name: fileName, type: 'application/octet-stream' });
+  }
+
+  const { data } = await client.post('/files/upload', form, {
+    timeout: 120000,
+  });
   return data;
 }
 
@@ -112,6 +127,17 @@ export async function rejectConnection(connectionId) {
   const { data } = await client.put(`/connections/${connectionId}/reject`);
   return data;
 }
+
+export async function updateProfileName(name) {
+  const { data } = await client.put('/auth/me', { name });
+  return data;
+}
+
+export async function clearAllMessages() {
+  const { data } = await client.delete('/auth/messages');
+  return data;
+}
+
 
 
 

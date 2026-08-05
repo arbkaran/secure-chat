@@ -417,38 +417,61 @@ export default function DesktopDashboard() {
       return;
     }
 
-    try {
-      const fileInfo = await FileSystem.getInfoAsync(uri);
-      const MAX_FILE_SIZE = 5 * 1024 * 1024;
-      if (fileInfo.exists && fileInfo.size > MAX_FILE_SIZE) {
-        showToast('The file size exceeds the 5MB limit.', 'error');
-        return;
+    if (Platform.OS !== 'web') {
+      try {
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        const MAX_FILE_SIZE = 5 * 1024 * 1024;
+        if (fileInfo.exists && fileInfo.size > MAX_FILE_SIZE) {
+          showToast('The file size exceeds the 5MB limit.', 'error');
+          return;
+        }
+      } catch (sizeErr) {
+        console.warn('Could not check file size:', sizeErr);
       }
-    } catch (sizeErr) {
-      console.warn('Could not check file size:', sizeErr);
     }
 
     setFileUploading(true);
     showToast('Encrypting and uploading file...', 'warning');
 
     try {
-      const fileBytes = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'base64',
-      });
+      let fileBytes;
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        fileBytes = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64data = reader.result.split(',')[1];
+            resolve(base64data);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } else {
+        fileBytes = await FileSystem.readAsStringAsync(uri, {
+          encoding: 'base64',
+        });
+      }
 
       const encryptedFile = hybridEncrypt(fileBytes, recipientPubKey);
 
-      const tempPath = `${FileSystem.cacheDirectory}${cleanFilename}.enc`;
-      await FileSystem.writeAsStringAsync(tempPath, encryptedFile.ciphertext, {
-        encoding: 'base64',
-      });
+      let fileUri;
+      if (Platform.OS === 'web') {
+        fileUri = `data:application/octet-stream;base64,${encryptedFile.ciphertext}`;
+      } else {
+        const tempPath = `${FileSystem.cacheDirectory}temp_upload_${Date.now()}.enc`;
+        await FileSystem.writeAsStringAsync(tempPath, encryptedFile.ciphertext, {
+          encoding: 'base64',
+        });
+        fileUri = tempPath;
+      }
 
       const uploadResult = await uploadFile({
         receiverId: Number(activeContact.id),
         encryptedAesKey: encryptedFile.encrypted_aes_key,
         iv: encryptedFile.iv,
         tag: encryptedFile.tag,
-        fileUri: tempPath,
+        fileUri,
         fileName: cleanFilename,
       });
 
@@ -460,7 +483,10 @@ export default function DesktopDashboard() {
       };
 
       await handleSend(JSON.stringify(fileMessage));
-      await FileSystem.deleteAsync(tempPath, { idempotent: true });
+      
+      if (Platform.OS !== 'web') {
+        await FileSystem.deleteAsync(fileUri, { idempotent: true });
+      }
       showToast('File sent successfully!', 'success');
     } catch (e) {
       console.error('File upload failed', e);
@@ -473,7 +499,11 @@ export default function DesktopDashboard() {
   const handleDownloadFile = async (fileId, filename) => {
     const cleanFilename = decodeURIComponent(filename);
     if (decryptedFiles[fileId]) {
-      await Sharing.shareAsync(decryptedFiles[fileId]);
+      if (Platform.OS === 'web') {
+        window.open(decryptedFiles[fileId], '_blank');
+      } else {
+        await Sharing.shareAsync(decryptedFiles[fileId]);
+      }
       return;
     }
 
@@ -484,28 +514,41 @@ export default function DesktopDashboard() {
       const encryptedFileData = await downloadFile(fileId);
       const decryptedBase64 = await hybridDecrypt(encryptedFileData, privateKey);
 
-      const localPath = `${FileSystem.documentDirectory}${cleanFilename}`;
-      await FileSystem.writeAsStringAsync(localPath, decryptedBase64, {
-        encoding: 'base64',
-      });
+      if (Platform.OS === 'web') {
+        const blob = await fetch(`data:application/octet-stream;base64,${decryptedBase64}`).then(r => r.blob());
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = cleanFilename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        setDecryptedFiles((prev) => ({ ...prev, [fileId]: url }));
+      } else {
+        const localPath = `${FileSystem.documentDirectory}${cleanFilename}`;
+        await FileSystem.writeAsStringAsync(localPath, decryptedBase64, {
+          encoding: 'base64',
+        });
 
-      setDecryptedFiles((prev) => ({ ...prev, [fileId]: localPath }));
+        setDecryptedFiles((prev) => ({ ...prev, [fileId]: localPath }));
 
-      // Save to gallery if image
-      if (isImage(cleanFilename)) {
-        try {
-          const permission = await MediaLibrary.requestPermissionsAsync();
-          if (permission.granted) {
-            await MediaLibrary.saveToLibraryAsync(localPath);
-            showToast('Saved directly to your gallery!', 'success');
+        // Save to gallery if image
+        if (isImage(cleanFilename)) {
+          try {
+            const permission = await MediaLibrary.requestPermissionsAsync();
+            if (permission.granted) {
+              await MediaLibrary.saveToLibraryAsync(localPath);
+              showToast('Saved directly to your gallery!', 'success');
+            }
+          } catch (mediaErr) {
+            console.warn('Could not save to gallery:', mediaErr);
           }
-        } catch (mediaErr) {
-          console.warn('Could not save to gallery:', mediaErr);
         }
-      }
 
-      showToast('File decrypted successfully!', 'success');
-      await Sharing.shareAsync(localPath);
+        showToast('File decrypted successfully!', 'success');
+        await Sharing.shareAsync(localPath);
+      }
     } catch (e) {
       console.error('File download/decryption failed', e);
       showToast('Could not download or decrypt file.', 'error');

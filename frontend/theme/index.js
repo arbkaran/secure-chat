@@ -1,4 +1,6 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useColorScheme } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 // Brand palette extracted from logo gradient:
 //   Cyan highlight  #0CB8D8
@@ -68,9 +70,70 @@ export const typography = {
   caption:       { fontFamily: 'Inter_400Regular',  fontSize: 11 },
 };
 
-export function useTheme() {
-  const scheme = useColorScheme();
-  const isDark = scheme === 'dark';
+export const ThemeContext = createContext();
+
+export function ThemeProvider({ children }) {
+  const systemScheme = useColorScheme();
+  const [themePreference, setThemePreference] = useState('system'); // 'system', 'light', 'dark'
+
+  useEffect(() => {
+    async function loadTheme() {
+      try {
+        const pref = await SecureStore.getItemAsync('theme_preference');
+        if (pref === 'light' || pref === 'dark' || pref === 'system') {
+          setThemePreference(pref);
+        }
+      } catch (e) {
+        // Fallback silently if SecureStore fails
+      }
+    }
+    loadTheme();
+  }, []);
+
+  const changeThemePreference = async (pref) => {
+    if (pref === 'light' || pref === 'dark' || pref === 'system') {
+      setThemePreference(pref);
+      try {
+        await SecureStore.setItemAsync('theme_preference', pref);
+      } catch (e) {
+        // Fallback silently
+      }
+    }
+  };
+
+  const isDark = themePreference === 'system' ? systemScheme === 'dark' : themePreference === 'dark';
   const colors = isDark ? darkColors : lightColors;
-  return { colors, spacing, radius, typography, isDark };
+
+  return (
+    <ThemeContext.Provider
+      value={{
+        colors,
+        spacing,
+        radius,
+        typography,
+        isDark,
+        themePreference,
+        setThemePreference: changeThemePreference,
+      }}
+    >
+      {children}
+    </ThemeContext.Provider>
+  );
 }
+
+export function useTheme() {
+  const context = useContext(ThemeContext);
+  if (!context) {
+    return {
+      colors: lightColors,
+      spacing,
+      radius,
+      typography,
+      isDark: false,
+      themePreference: 'system',
+      setThemePreference: () => {},
+    };
+  }
+  return context;
+}
+

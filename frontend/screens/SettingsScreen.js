@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import {
   View, Text, Pressable, StyleSheet, ScrollView,
-  Switch, Alert, Platform,
+  Switch, Alert, Platform, Modal, TextInput, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import ScreenContainer from '../components/ScreenContainer';
@@ -10,11 +10,12 @@ import { ChevronRightIcon, EyeIcon } from '../components/icons';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { getStoredEmail, getStoredPassword } from '../api/authStorage';
-import { fetchCurrentUser } from '../api/client';
+import { fetchCurrentUser, updateProfileName, clearAllMessages } from '../api/client';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { useToast } from '../context/ToastContext';
+import { getStoredPublicKey } from '../crypto/keys';
 
 // Coloured badge wrapper around an Ionicons icon (like WhatsApp)
 function IconBadge({ name, color }) {
@@ -72,7 +73,7 @@ const rowS = StyleSheet.create({
 
 export default function SettingsScreen() {
   const { logout } = useAuth();
-  const { colors } = useTheme();
+  const { colors, themePreference, setThemePreference } = useTheme();
   const { showToast } = useToast();
 
   const [profile, setProfile] = useState({ name: '', email: '' });
@@ -81,11 +82,18 @@ export default function SettingsScreen() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [profilePictureUri, setProfilePictureUri] = useState(null);
 
+  // Modal / overlay states
+  const [activeModal, setActiveModal] = useState(null); // 'account' | 'privacy' | 'chats' | 'appearance' | 'support' | null
+  const [editName, setEditName] = useState('');
+  const [publicKey, setPublicKey] = useState('Loading key details...');
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
     async function loadProfile() {
       try {
         const u = await fetchCurrentUser();
         setProfile({ name: u.name, email: u.email });
+        setEditName(u.name);
       } catch {
         const storedEmail = await getStoredEmail();
         setProfile((prev) => ({ ...prev, email: storedEmail || '' }));
@@ -94,19 +102,32 @@ export default function SettingsScreen() {
       setPassword(storedPw || '');
     }
     async function loadSettings() {
-      const enabled = await SecureStore.getItemAsync('notifications_enabled');
-      setNotificationsEnabled(enabled !== 'false');
-      const avatar = await SecureStore.getItemAsync('profile_picture_uri');
-      if (avatar) setProfilePictureUri(avatar);
+      try {
+        const enabled = await SecureStore.getItemAsync('notifications_enabled');
+        setNotificationsEnabled(enabled !== 'false');
+        const avatar = await SecureStore.getItemAsync('profile_picture_uri');
+        if (avatar) setProfilePictureUri(avatar);
+      } catch (e) {}
     }
     loadProfile();
     loadSettings();
   }, []);
 
+  // Fetch public key when privacy modal opens
+  useEffect(() => {
+    if (activeModal === 'privacy') {
+      getStoredPublicKey().then((key) => {
+        setPublicKey(key || 'No cryptographic identity key found.');
+      });
+    }
+  }, [activeModal]);
+
   const handleToggleNotifications = async (val) => {
     setNotificationsEnabled(val);
-    await SecureStore.setItemAsync('notifications_enabled', val ? 'true' : 'false');
-    showToast(val ? 'Notifications enabled' : 'Notifications disabled', 'success');
+    try {
+      await SecureStore.setItemAsync('notifications_enabled', val ? 'true' : 'false');
+      showToast(val ? 'Notifications enabled' : 'Notifications disabled', 'success');
+    } catch (e) {}
   };
 
   const handlePickProfilePicture = async () => {
@@ -128,6 +149,37 @@ export default function SettingsScreen() {
       }
     } catch {
       showToast('Could not update photo.', 'error');
+    }
+  };
+
+  const handleSaveName = async () => {
+    if (!editName.trim()) {
+      showToast('Name cannot be empty', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      await updateProfileName(editName);
+      setProfile((prev) => ({ ...prev, name: editName }));
+      showToast('Profile name updated!', 'success');
+      setActiveModal(null);
+    } catch {
+      showToast('Could not update profile name.', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearChats = async () => {
+    setLoading(true);
+    try {
+      await clearAllMessages();
+      showToast('Message history cleared successfully.', 'success');
+      setActiveModal(null);
+    } catch {
+      showToast('Could not clear message history.', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -168,6 +220,10 @@ export default function SettingsScreen() {
             iconColor="#007AFF"
             label="Account"
             right={<ChevronRightIcon color={colors.textTertiary} />}
+            onPress={() => {
+              setEditName(profile.name);
+              setActiveModal('account');
+            }}
             colors={colors}
           />
           <Row
@@ -175,6 +231,7 @@ export default function SettingsScreen() {
             iconColor="#34C759"
             label="Privacy"
             right={<ChevronRightIcon color={colors.textTertiary} />}
+            onPress={() => setActiveModal('privacy')}
             colors={colors}
           />
           <Row
@@ -182,6 +239,7 @@ export default function SettingsScreen() {
             iconColor="#FF9500"
             label="Chats"
             right={<ChevronRightIcon color={colors.textTertiary} />}
+            onPress={() => setActiveModal('chats')}
             colors={colors}
           />
           <Row
@@ -204,6 +262,7 @@ export default function SettingsScreen() {
             iconColor="#AF52DE"
             label="Appearance"
             right={<ChevronRightIcon color={colors.textTertiary} />}
+            onPress={() => setActiveModal('appearance')}
             colors={colors}
           />
           <Row
@@ -211,6 +270,7 @@ export default function SettingsScreen() {
             iconColor="#5856D6"
             label="Help & Support"
             right={<ChevronRightIcon color={colors.textTertiary} />}
+            onPress={() => setActiveModal('support')}
             divider={false}
             colors={colors}
           />
@@ -258,6 +318,171 @@ export default function SettingsScreen() {
           <Text style={[s.logoutText, { color: colors.destructive }]}>Log Out</Text>
         </Pressable>
       </ScrollView>
+
+      {/* --- MODALS --- */}
+
+      {/* 1. Account Settings Modal */}
+      <Modal
+        visible={activeModal === 'account'}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <View style={s.modalBackdrop}>
+          <View style={s.modalContent}>
+            <Text style={s.modalTitle}>Account Profile</Text>
+            <Text style={s.modalLabel}>Display Name</Text>
+            <TextInput
+              style={s.textInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Your Name"
+              placeholderTextColor={colors.textTertiary}
+            />
+            {loading ? (
+              <ActivityIndicator color={colors.accent} style={{ marginVertical: 12 }} />
+            ) : (
+              <View style={s.modalButtons}>
+                <Pressable style={[s.modalBtn, { backgroundColor: colors.surfaceAlt }]} onPress={() => setActiveModal(null)}>
+                  <Text style={[s.modalBtnText, { color: colors.textPrimary }]}>Cancel</Text>
+                </Pressable>
+                <Pressable style={[s.modalBtn, { backgroundColor: colors.accent }]} onPress={handleSaveName}>
+                  <Text style={[s.modalBtnText, { color: '#fff' }]}>Save</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* 2. Privacy Settings Modal */}
+      <Modal
+        visible={activeModal === 'privacy'}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <View style={s.modalBackdrop}>
+          <View style={s.modalContent}>
+            <Text style={s.modalTitle}>E2E Privacy Keys</Text>
+            <Text style={s.modalBodyText}>
+              Your messages are fully end-to-end encrypted. Below is your active RSA public identity key registration.
+            </Text>
+            <ScrollView style={s.keyContainer} contentContainerStyle={{ padding: 10 }}>
+              <Text style={s.keyText} selectable={true}>{publicKey}</Text>
+            </ScrollView>
+            <Pressable style={[s.modalBtn, { backgroundColor: colors.accent, alignSelf: 'stretch', marginTop: 16 }]} onPress={() => setActiveModal(null)}>
+              <Text style={[s.modalBtnText, { color: '#fff' }]}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 3. Chats purger Modal */}
+      <Modal
+        visible={activeModal === 'chats'}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <View style={s.modalBackdrop}>
+          <View style={s.modalContent}>
+            <Text style={s.modalTitle}>Clear History</Text>
+            <Text style={s.modalBodyText}>
+              Are you sure you want to permanently erase all message conversations? This action is irreversible.
+            </Text>
+            {loading ? (
+              <ActivityIndicator color={colors.destructive} style={{ marginVertical: 12 }} />
+            ) : (
+              <View style={s.modalButtons}>
+                <Pressable style={[s.modalBtn, { backgroundColor: colors.surfaceAlt }]} onPress={() => setActiveModal(null)}>
+                  <Text style={[s.modalBtnText, { color: colors.textPrimary }]}>Cancel</Text>
+                </Pressable>
+                <Pressable style={[s.modalBtn, { backgroundColor: colors.destructive }]} onPress={handleClearChats}>
+                  <Text style={[s.modalBtnText, { color: '#fff' }]}>Erase All</Text>
+                </Pressable>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* 4. Appearance Selection Modal */}
+      <Modal
+        visible={activeModal === 'appearance'}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <View style={s.modalBackdrop}>
+          <View style={s.modalContent}>
+            <Text style={s.modalTitle}>Select Theme</Text>
+            
+            <Pressable
+              style={s.themeOptionRow}
+              onPress={() => setThemePreference('light')}
+            >
+              <Text style={[s.themeOptionText, { color: colors.textPrimary }]}>Light Mode</Text>
+              {themePreference === 'light' && <Ionicons name="checkmark-circle" size={22} color={colors.accent} />}
+            </Pressable>
+
+            <Pressable
+              style={s.themeOptionRow}
+              onPress={() => setThemePreference('dark')}
+            >
+              <Text style={[s.themeOptionText, { color: colors.textPrimary }]}>Dark Mode</Text>
+              {themePreference === 'dark' && <Ionicons name="checkmark-circle" size={22} color={colors.accent} />}
+            </Pressable>
+
+            <Pressable
+              style={s.themeOptionRow}
+              onPress={() => setThemePreference('system')}
+            >
+              <Text style={[s.themeOptionText, { color: colors.textPrimary }]}>System Default</Text>
+              {themePreference === 'system' && <Ionicons name="checkmark-circle" size={22} color={colors.accent} />}
+            </Pressable>
+
+            <Pressable style={[s.modalBtn, { backgroundColor: colors.accent, alignSelf: 'stretch', marginTop: 20 }]} onPress={() => setActiveModal(null)}>
+              <Text style={[s.modalBtnText, { color: '#fff' }]}>Done</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 5. Support / Help Modal */}
+      <Modal
+        visible={activeModal === 'support'}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setActiveModal(null)}
+      >
+        <View style={s.modalBackdrop}>
+          <View style={s.modalContent}>
+            <Text style={s.modalTitle}>Help & Support</Text>
+            <View style={{ gap: 12, marginVertical: 10, alignSelf: 'stretch' }}>
+              <View style={s.supportDetailRow}>
+                <Text style={[s.supportLabel, { color: colors.textSecondary }]}>App Version</Text>
+                <Text style={[s.supportVal, { color: colors.textPrimary }]}>1.0.0 (Release)</Text>
+              </View>
+              <View style={s.supportDetailRow}>
+                <Text style={[s.supportLabel, { color: colors.textSecondary }]}>Encryption</Text>
+                <Text style={[s.supportVal, { color: colors.textPrimary }]}>RSAES-OAEP / AES-GCM</Text>
+              </View>
+              <View style={s.supportDetailRow}>
+                <Text style={[s.supportLabel, { color: colors.textSecondary }]}>Core Engine</Text>
+                <Text style={[s.supportVal, { color: colors.textPrimary }]}>React Native + FastAPI</Text>
+              </View>
+              <View style={s.supportDetailRow}>
+                <Text style={[s.supportLabel, { color: colors.textSecondary }]}>Contact Support</Text>
+                <Text style={[s.supportVal, { color: colors.accent }]}>support@securechat.io</Text>
+              </View>
+            </View>
+            <Pressable style={[s.modalBtn, { backgroundColor: colors.accent, alignSelf: 'stretch', marginTop: 16 }]} onPress={() => setActiveModal(null)}>
+              <Text style={[s.modalBtnText, { color: '#fff' }]}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScreenContainer>
   );
 }
@@ -319,5 +544,117 @@ function createStyles(colors) {
       fontSize: 16,
       fontFamily: 'Inter_600SemiBold',
     },
+    // Modal Styles
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.6)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+    },
+    modalContent: {
+      backgroundColor: colors.screen,
+      borderRadius: 18,
+      padding: 20,
+      width: '100%',
+      maxWidth: 400,
+      alignItems: 'center',
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    modalTitle: {
+      fontSize: 19,
+      fontFamily: 'Inter_700Bold',
+      color: colors.textPrimary,
+      marginBottom: 14,
+    },
+    modalLabel: {
+      fontSize: 14,
+      fontFamily: 'Inter_500Medium',
+      color: colors.textSecondary,
+      alignSelf: 'flex-start',
+      marginBottom: 6,
+    },
+    modalBodyText: {
+      fontSize: 14,
+      fontFamily: 'Inter_400Regular',
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginBottom: 16,
+      lineHeight: 20,
+    },
+    textInput: {
+      height: 44,
+      width: '100%',
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      color: colors.textPrimary,
+      backgroundColor: colors.surfaceAlt,
+      fontSize: 15,
+      fontFamily: 'Inter_400Regular',
+      marginBottom: 16,
+    },
+    modalButtons: {
+      flexDirection: 'row',
+      gap: 12,
+      width: '100%',
+      justifyContent: 'flex-end',
+    },
+    modalBtn: {
+      paddingVertical: 11,
+      paddingHorizontal: 18,
+      borderRadius: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 80,
+    },
+    modalBtnText: {
+      fontSize: 15,
+      fontFamily: 'Inter_600SemiBold',
+    },
+    keyContainer: {
+      maxHeight: 180,
+      width: '100%',
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    keyText: {
+      fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+      fontSize: 11,
+      color: colors.textSecondary,
+    },
+    themeOptionRow: {
+      flexDirection: 'row',
+      width: '100%',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    themeOptionText: {
+      fontSize: 16,
+      fontFamily: 'Inter_400Regular',
+    },
+    supportDetailRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      width: '100%',
+      paddingVertical: 4,
+    },
+    supportLabel: {
+      fontSize: 14,
+      fontFamily: 'Inter_400Regular',
+    },
+    supportVal: {
+      fontSize: 14,
+      fontFamily: 'Inter_500Medium',
+    },
   });
 }
+

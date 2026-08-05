@@ -218,8 +218,24 @@ export default function ContactsScreen({ navigation }) {
   const [showModal, setShowModal] = useState(false);
   const [actionLoading, setActionLoading] = useState({});
 
+  const [connectionStatus, setConnectionStatus] = useState('connecting');
+
   useEffect(() => {
-    connectSocket().catch(() => {});
+    let socket;
+    async function initSocket() {
+      try {
+        socket = await connectSocket();
+        if (socket) {
+          setConnectionStatus(socket.connected ? 'connected' : 'connecting');
+          socket.on('connect', () => setConnectionStatus('connected'));
+          socket.on('disconnect', () => setConnectionStatus('disconnected'));
+          socket.on('connect_error', () => setConnectionStatus('disconnected'));
+        }
+      } catch (e) {
+        setConnectionStatus('disconnected');
+      }
+    }
+    initSocket();
 
     async function load() {
       try {
@@ -260,6 +276,14 @@ export default function ContactsScreen({ navigation }) {
       }
     }
     load();
+
+    return () => {
+      if (socket) {
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('connect_error');
+      }
+    };
   }, []);
 
   useFocusEffect(
@@ -426,9 +450,23 @@ export default function ContactsScreen({ navigation }) {
       {/* ── Header ── */}
       <View style={[styles.header, { backgroundColor: colors.screen }]}>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Chats</Text>
-        <Pressable style={[styles.headerIconBtn, { backgroundColor: colors.surfaceAlt }]} onPress={() => setShowModal(true)}>
-          <PlusIcon size={18} color={colors.textPrimary} />
-        </Pressable>
+        <View style={styles.headerActions}>
+          <View style={[styles.statusBadge, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+            <View style={[styles.statusDot, {
+              backgroundColor: connectionStatus === 'connected' ? colors.online
+                             : connectionStatus === 'connecting' ? '#FF9500'
+                             : colors.destructive
+            }]} />
+            <Text style={[styles.statusTextText, { color: colors.textSecondary }]}>
+              {connectionStatus === 'connected' ? 'Connected'
+               : connectionStatus === 'connecting' ? 'Connecting'
+               : 'Offline'}
+            </Text>
+          </View>
+          <Pressable style={[styles.headerIconBtn, { backgroundColor: colors.surfaceAlt }]} onPress={() => setShowModal(true)}>
+            <PlusIcon size={18} color={colors.textPrimary} />
+          </Pressable>
+        </View>
       </View>
 
       {/* ── Chat list ── */}
@@ -520,7 +558,26 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 5,
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusTextText: {
+    fontSize: 11.5,
+    fontFamily: 'Inter_500Medium',
   },
   headerIconBtn: {
     width: 36,

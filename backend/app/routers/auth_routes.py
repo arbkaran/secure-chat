@@ -13,7 +13,7 @@ from ..auth import (
 from ..database import get_db
 from ..email_otp import send_otp_email
 from ..models import LoginLog, OTPCode, User, Message
-from ..schemas import LoginSchema, RegisterSchema, VerifyOtpSchema
+from ..schemas import LoginSchema, RegisterSchema, VerifyOtpSchema, UpdateProfileSchema
 from ..sockets import online_sessions
 
 router = APIRouter(prefix="/auth")
@@ -156,5 +156,28 @@ def get_messages(contact_id: int, current_user: User = Depends(get_current_user)
         }
         for m in messages
     ]
+
+
+@router.put("/me")
+def update_me(payload: UpdateProfileSchema, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    current_user.name = payload.name
+    db.commit()
+    db.refresh(current_user)
+    return {
+        "id": current_user.id,
+        "name": current_user.name,
+        "email": current_user.email,
+        "is_verified": current_user.is_verified,
+    }
+
+
+@router.delete("/messages")
+def delete_all_messages(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    db.query(Message).filter(
+        (Message.sender_id == current_user.id) | (Message.receiver_id == current_user.id)
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"message": "All messages cleared successfully"}
+
 
 

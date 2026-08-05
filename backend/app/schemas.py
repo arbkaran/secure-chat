@@ -23,3 +23,8 @@ class KeyUploadSchema(BaseModel):
 
 class ConnectionRequestSchema(BaseModel):
     receiver_id: int
+
+
+class UpdateProfileSchema(BaseModel):
+    name: str
+

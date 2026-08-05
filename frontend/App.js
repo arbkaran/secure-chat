@@ -15,6 +15,7 @@ import * as Notifications from 'expo-notifications';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
 import { ActiveChatProvider } from './context/ActiveChatContext';
+import { ThemeProvider } from './theme';
 import RootNavigator from './navigation/RootNavigator';
 import AppSplashScreen from './screens/AppSplashScreen';
 import { navigate } from './navigation/navigationRef';
@@ -64,13 +65,15 @@ export default function App() {
 
   return (
     <View style={styles.root}>
-      <AuthProvider>
-        <ActiveChatProvider>
-          <ToastProvider>
-            <RootNavigator />
-          </ToastProvider>
-        </ActiveChatProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <ActiveChatProvider>
+            <ToastProvider>
+              <RootNavigator />
+            </ToastProvider>
+          </ActiveChatProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </View>
   );
 }

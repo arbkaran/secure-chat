@@ -13,6 +13,7 @@
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
     "expo": "~54.0.0",
+    "expo-av": "~16.0.8",
     "expo-blur": "~15.0.8",
     "expo-crypto": "~15.0.9",
     "expo-document-picker": "~14.0.8",
