@@ -16,6 +16,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 import { useToast } from '../context/ToastContext';
 import { getStoredPublicKey } from '../crypto/keys';
+import { API_BASE_URL } from '../config/env';
 
 // Coloured badge wrapper around an Ionicons icon (like WhatsApp)
 function IconBadge({ name, color }) {
@@ -88,6 +89,9 @@ export default function SettingsScreen() {
   const [publicKey, setPublicKey] = useState('Loading key details...');
   const [loading, setLoading] = useState(false);
 
+  const [deviceEncryptionId, setDeviceEncryptionId] = useState('');
+  const [lanIpAddress, setLanIpAddress] = useState('Unknown');
+
   useEffect(() => {
     async function loadProfile() {
       try {
@@ -109,8 +113,31 @@ export default function SettingsScreen() {
         if (avatar) setProfilePictureUri(avatar);
       } catch (e) {}
     }
+    async function loadEncryptionDetails() {
+      try {
+        let encId = await SecureStore.getItemAsync('device_encryption_id');
+        if (!encId) {
+          const chars = '0123456789ABCDEF';
+          let result = '';
+          for (let i = 0; i < 16; i++) {
+            if (i > 0 && i % 4 === 0) result += '-';
+            result += chars[Math.floor(Math.random() * 16)];
+          }
+          encId = result;
+          await SecureStore.setItemAsync('device_encryption_id', encId);
+        }
+        setDeviceEncryptionId(encId);
+
+        // Parse LAN IP
+        const match = API_BASE_URL.match(/\/\/([^:/]+)/);
+        setLanIpAddress(match ? match[1] : 'Unknown');
+      } catch (e) {
+        setLanIpAddress('Unknown');
+      }
+    }
     loadProfile();
     loadSettings();
+    loadEncryptionDetails();
   }, []);
 
   // Fetch public key when privacy modal opens
@@ -307,6 +334,22 @@ export default function SettingsScreen() {
             iconColor="#34C759"
             label="End-to-end encrypted"
             right={<Text style={[s.tag, { color: colors.online }]}>Active</Text>}
+            divider={true}
+            colors={colors}
+          />
+          <Row
+            icon="fingerprint-outline"
+            iconColor="#FF3B30"
+            label="Encryption Number"
+            right={<Text style={{ color: colors.textSecondary, fontSize: 14, fontFamily: 'Inter_500Medium' }}>{deviceEncryptionId}</Text>}
+            divider={true}
+            colors={colors}
+          />
+          <Row
+            icon="wifi-outline"
+            iconColor="#007AFF"
+            label="Connected LAN"
+            right={<Text style={{ color: colors.textSecondary, fontSize: 14, fontFamily: 'Inter_500Medium' }}>{lanIpAddress}</Text>}
             divider={false}
             colors={colors}
           />
