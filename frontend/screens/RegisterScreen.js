@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View, Text, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import ScreenContainer from '../components/ScreenContainer';
 import TextField from '../components/TextField';
 import Button from '../components/Button';
@@ -42,7 +42,7 @@ export default function RegisterScreen({ navigation }) {
     <ScreenContainer style={styles.container}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <View style={styles.cardWrapper}>
+          <Pressable style={styles.cardWrapper} onPress={Keyboard.dismiss}>
             <View style={styles.card}>
               <Text style={styles.title}>Create Account</Text>
               <Text style={styles.subtitle}>Keys are generated locally and never leave this device.</Text>
@@ -66,7 +66,7 @@ export default function RegisterScreen({ navigation }) {
                 <Text style={styles.loginLink}>Log in</Text>
               </Pressable>
             </View>
-          </View>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </ScreenContainer>

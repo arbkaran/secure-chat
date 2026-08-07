@@ -39,7 +39,7 @@ class PublicKey(Base):
     __tablename__ = "public_keys"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), unique=True)
     rsa_public_key = Column(Text, nullable=False)  # PEM text
 
 
@@ -47,8 +47,8 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True)
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    receiver_id = Column(Integer, ForeignKey("users.id"))
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    receiver_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     encrypted_content = Column(Text, nullable=False)
     encrypted_aes_key = Column(Text, nullable=False)
     iv = Column(String(64), nullable=False)
@@ -61,8 +61,8 @@ class FileRecord(Base):
     __tablename__ = "files"
 
     id = Column(Integer, primary_key=True)
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    receiver_id = Column(Integer, ForeignKey("users.id"))
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    receiver_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     filename = Column(String(255), nullable=False)
     encrypted_blob = Column(LargeBinary, nullable=False)
     encrypted_aes_key = Column(Text, nullable=False)
@@ -75,7 +75,7 @@ class LoginLog(Base):
     __tablename__ = "login_logs"
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     email = Column(String(255), nullable=False)
     success = Column(Boolean, nullable=False)
     ip_address = Column(String(64), nullable=True)

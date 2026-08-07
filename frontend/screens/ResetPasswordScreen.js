@@ -6,34 +6,36 @@ import Button from '../components/Button';
 import EncryptedFooter from '../components/EncryptedFooter';
 import { ShieldIcon, EyeIcon } from '../components/icons';
 import { useTheme } from '../theme';
-import { useAuth } from '../context/AuthContext';
-import { login as apiLogin, uploadPublicKey } from '../api/client';
-import { ensureKeypair } from '../crypto/keys';
-import { connectSocket } from '../api/socket';
-import { setStoredCredentials } from '../api/authStorage';
+import { resetPassword } from '../api/client';
 
-export default function LoginScreen({ navigation }) {
-  const { login } = useAuth();
+export default function ResetPasswordScreen({ route, navigation }) {
   const { colors, spacing } = useTheme();
   const styles = useMemo(() => createStyles(colors, spacing), [colors, spacing]);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  
+  const initialEmail = route?.params?.email ?? '';
+  const [email, setEmail] = useState(initialEmail);
+  const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
 
-  async function handleLogin() {
+  async function handleResetPassword() {
+    if (!email || !code || !newPassword) {
+      setError('Please fill in all fields');
+      return;
+    }
     setError('');
     setLoading(true);
     try {
-      const { user_id } = await apiLogin({ email, password });
-      await setStoredCredentials(email, password);
-      const publicKey = await ensureKeypair();
-      await uploadPublicKey(publicKey);
-      await connectSocket();
-      login(user_id);
+      await resetPassword(email, code, newPassword);
+      setSuccess(true);
+      setTimeout(() => {
+        navigation.navigate('Login');
+      }, 2000);
     } catch (e) {
-      setError(e?.response?.data?.detail ?? (e?.code === 'ECONNABORTED' ? 'Server timed out — is the backend running?' : 'Invalid email or password'));
+      setError(e?.response?.data?.detail ?? 'Failed to reset password. Check the code and try again.');
     } finally {
       setLoading(false);
     }
@@ -51,8 +53,8 @@ export default function LoginScreen({ navigation }) {
               <ShieldIcon size={32} color={colors.accent} />
             </View>
 
-            <Text style={styles.title}>SecureChat</Text>
-            <Text style={styles.subtitle}>Secure LAN Messaging</Text>
+            <Text style={styles.title}>New Password</Text>
+            <Text style={styles.subtitle}>Enter the code sent to your email and set your new password.</Text>
 
             <TextField
               label="Email Address"
@@ -61,35 +63,43 @@ export default function LoginScreen({ navigation }) {
               placeholder="you@example.com"
               keyboardType="email-address"
               autoCapitalize="none"
+              editable={!initialEmail}
             />
 
             <TextField
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
+              label="Verification Code (OTP)"
+              value={code}
+              onChangeText={setCode}
+              placeholder="123456"
+              keyboardType="number-pad"
+              autoCapitalize="none"
+            />
+
+            <TextField
+              label="New Password"
+              value={newPassword}
+              onChangeText={setNewPassword}
               placeholder="••••••••"
               secureTextEntry={!showPassword}
               rightIcon={<EyeIcon off={showPassword} color={colors.textTertiary} />}
               onRightIconPress={() => setShowPassword((v) => !v)}
             />
 
-            <Pressable style={styles.forgotRow} onPress={() => navigation.navigate('ForgotPassword')}>
-              <Text style={styles.forgotText}>Forgot password?</Text>
-            </Pressable>
-
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {success ? <Text style={styles.successText}>Password reset successfully! Redirecting...</Text> : null}
 
-            <Button title={loading ? 'Logging in…' : 'Log In'} onPress={handleLogin} disabled={loading} />
+            <Button 
+              title={loading ? 'Resetting…' : 'Reset Password'} 
+              onPress={handleResetPassword} 
+              disabled={loading || success} 
+            />
 
             <View style={styles.dividerRow}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>OR</Text>
-              <View style={styles.dividerLine} />
             </View>
 
-            <Pressable style={styles.registerRow} onPress={() => navigation.navigate('Register')}>
-              <Text style={styles.registerPrompt}>Don't have an account?</Text>
-              <Text style={styles.registerLink}>Register</Text>
+            <Pressable style={styles.loginRow} onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.loginLink}>Back to Log In</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -120,56 +130,51 @@ function createStyles(colors, spacing) {
       borderRadius: 20,
       shadowColor: '#0F172A',
       shadowOffset: { width: 0, height: 8 },
-      shadowOpacity: 0.05,
-      shadowRadius: 16,
+      shadowOpacity: 0.1,
+      shadowRadius: 24,
       elevation: 4,
-      alignItems: 'stretch',
+      alignItems: 'center',
     },
     iconBadge: {
       width: 64,
       height: 64,
-      borderRadius: 18,
-      backgroundColor: colors.accentSoft,
-      alignItems: 'center',
+      borderRadius: 16,
+      backgroundColor: colors.accent + '15',
       justifyContent: 'center',
-      alignSelf: 'center',
+      alignItems: 'center',
       marginBottom: 20,
     },
     title: {
+      fontSize: 24,
+      fontWeight: '700',
       color: colors.textPrimary,
-      fontSize: 26,
-      fontFamily: 'Inter_700Bold',
-      letterSpacing: -0.5,
-      textAlign: 'center',
       marginBottom: 6,
     },
     subtitle: {
-      color: colors.textSecondary,
-      fontSize: 15,
-      fontFamily: 'Inter_400Regular',
+      fontSize: 14,
+      color: colors.textTertiary,
       textAlign: 'center',
       marginBottom: 24,
-    },
-    forgotRow: {
-      alignSelf: 'flex-end',
-      marginBottom: 24,
-    },
-    forgotText: {
-      color: colors.textTertiary,
-      fontSize: 13,
-      fontFamily: 'Inter_500Medium',
+      lineHeight: 20,
     },
     errorText: {
-      color: colors.destructive,
+      color: colors.danger || '#ef4444',
       fontSize: 13,
-      fontFamily: 'Inter_400Regular',
-      marginBottom: 12,
+      fontWeight: '500',
+      marginBottom: 16,
+      textAlign: 'center',
+    },
+    successText: {
+      color: '#22c55e',
+      fontSize: 13,
+      fontWeight: '500',
+      marginBottom: 16,
       textAlign: 'center',
     },
     dividerRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      width: '100%',
       marginVertical: 20,
     },
     dividerLine: {
@@ -177,25 +182,14 @@ function createStyles(colors, spacing) {
       height: 1,
       backgroundColor: colors.border,
     },
-    dividerText: {
-      color: colors.textTertiary,
-      fontSize: 12,
-      fontFamily: 'Inter_400Regular',
-    },
-    registerRow: {
+    loginRow: {
       flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 6,
+      alignItems: 'center',
     },
-    registerPrompt: {
-      color: colors.textSecondary,
+    loginLink: {
       fontSize: 14,
-      fontFamily: 'Inter_400Regular',
-    },
-    registerLink: {
+      fontWeight: '600',
       color: colors.accent,
-      fontSize: 14,
-      fontFamily: 'Inter_600SemiBold',
     },
   });
 }

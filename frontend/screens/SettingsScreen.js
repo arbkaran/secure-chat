@@ -10,7 +10,7 @@ import { ChevronRightIcon, EyeIcon } from '../components/icons';
 import { useTheme } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { getStoredEmail, getStoredPassword } from '../api/authStorage';
-import { fetchCurrentUser, updateProfileName, clearAllMessages } from '../api/client';
+import { fetchCurrentUser, updateProfileName, clearAllMessages, deleteAccount } from '../api/client';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
@@ -195,6 +195,33 @@ export default function SettingsScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleDeleteAccount = async () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you absolutely sure you want to delete your account? This will permanently erase your profile, cryptographic keys, messages, and files. This action is irreversible.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive', 
+          onPress: async () => {
+            setLoading(true);
+            try {
+              await deleteAccount();
+              setActiveModal(null);
+              showToast('Account deleted successfully', 'success');
+              await logout();
+            } catch (err) {
+              showToast('Could not delete account. Try again.', 'error');
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const handleClearChats = async () => {
@@ -385,12 +412,21 @@ export default function SettingsScreen() {
             {loading ? (
               <ActivityIndicator color={colors.accent} style={{ marginVertical: 12 }} />
             ) : (
-              <View style={s.modalButtons}>
-                <Pressable style={[s.modalBtn, { backgroundColor: colors.surfaceAlt }]} onPress={() => setActiveModal(null)}>
-                  <Text style={[s.modalBtnText, { color: colors.textPrimary }]}>Cancel</Text>
-                </Pressable>
-                <Pressable style={[s.modalBtn, { backgroundColor: colors.accent }]} onPress={handleSaveName}>
-                  <Text style={[s.modalBtnText, { color: '#fff' }]}>Save</Text>
+              <View style={{ width: '100%' }}>
+                <View style={s.modalButtons}>
+                  <Pressable style={[s.modalBtn, { backgroundColor: colors.surfaceAlt }]} onPress={() => setActiveModal(null)}>
+                    <Text style={[s.modalBtnText, { color: colors.textPrimary }]}>Cancel</Text>
+                  </Pressable>
+                  <Pressable style={[s.modalBtn, { backgroundColor: colors.accent }]} onPress={handleSaveName}>
+                    <Text style={[s.modalBtnText, { color: '#fff' }]}>Save</Text>
+                  </Pressable>
+                </View>
+                <View style={{ height: 16 }} />
+                <Pressable 
+                  style={[s.modalBtn, { backgroundColor: colors.destructive + '15', borderColor: colors.destructive, borderWidth: StyleSheet.hairlineWidth, width: '100%', alignSelf: 'stretch' }]} 
+                  onPress={handleDeleteAccount}
+                >
+                  <Text style={[s.modalBtnText, { color: colors.destructive, fontWeight: '600' }]}>Delete Account</Text>
                 </Pressable>
               </View>
             )}

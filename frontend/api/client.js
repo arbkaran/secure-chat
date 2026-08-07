@@ -138,6 +138,21 @@ export async function clearAllMessages() {
   return data;
 }
 
+export async function forgotPassword(email) {
+  const { data } = await client.post('/auth/forgot-password', { email });
+  return data;
+}
+
+export async function resetPassword(email, code, newPassword) {
+  const { data } = await client.post('/auth/reset-password', { email, code, new_password: newPassword });
+  return data;
+}
+
+export async function deleteAccount() {
+  const { data } = await client.delete('/auth/me');
+  return data;
+}
+
 
 
 
